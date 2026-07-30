@@ -42,6 +42,7 @@
   #clock { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .nav-link { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 0.72rem; color: var(--muted); text-decoration: none; }
   .nav-link:hover { color: var(--gold); border-color: var(--gold); }
+  .nav-link.active { background: var(--gold); color: #0a0a0f; border-color: var(--gold); font-weight: 700; }
 
   /* Live spot ticker at top */
   .ticker-bar {
@@ -139,6 +140,7 @@
   <div class="logo">AUREM <span>MAIN</span></div>
   <div class="header-meta">
     <a class="nav-link" href="/">Rates</a>
+    <a class="nav-link active" href="/main">Main</a>
     <a class="nav-link" href="/arb">Detailed Arb</a>
     <div class="pill off" id="statusPill">
       <div class="dot" id="statusDot"></div>

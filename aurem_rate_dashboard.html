@@ -38,6 +38,9 @@
   .dot.pulse { animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
   #clock { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .nav-link { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 0.75rem; color: var(--muted); text-decoration: none; }
+  .nav-link:hover { color: var(--gold); border-color: var(--gold); }
+  .nav-link.active { background: var(--gold); color: #0a0a0f; border-color: var(--gold); font-weight: 700; }
 
   .main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
 
@@ -109,6 +112,9 @@
 <header>
   <div class="logo">AUREM <span>RATES</span></div>
   <div class="header-meta">
+    <a class="nav-link active" href="/">Rates</a>
+    <a class="nav-link" href="/main">Main</a>
+    <a class="nav-link" href="/arb">Detailed Arb</a>
     <div class="pill off" id="statusPill">
       <div class="dot" id="statusDot"></div>
       <span id="statusLabel">Connecting...</span>
