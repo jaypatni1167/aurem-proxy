@@ -265,8 +265,21 @@ setInterval(fetchArihant, 5000);
 // Reverse-engineered from tradingview.com's own live chart feed.
 const WebSocketClient = require('ws');
 
+// Spot symbols
 const spotSymbols = { 'OANDA:XAUUSD': 'XAUUSD', 'TVC:SILVER': 'XAGUSD', 'FX_IDC:USDINR': 'USDINR' };
+// Key futures contracts (front + near months) for real-time subscription
+const futuresSymbols = [
+  // MCX Gold — front month and next few
+  'MCX:GOLD1!', 'MCX:GOLDM1!',
+  // COMEX Gold
+  'COMEX:GC1!',
+  // MCX Silver
+  'MCX:SILVER1!', 'MCX:SILVERM1!',
+  // COMEX Silver
+  'COMEX:SI1!',
+];
 const spotState = {}; // keyed by short symbol
+const futuresLiveState = {}; // keyed by full TV symbol e.g. 'MCX:GOLD1!'
 let tvWs = null;
 let tvReconnectTimer = null;
 let tvLastBroadcast = 0;
@@ -292,7 +305,7 @@ function connectTvWs() {
     tvWs.send(packTv({ m: 'set_auth_token', p: ['unauthorized_user_token'] }));
     tvWs.send(packTv({ m: 'quote_create_session', p: [session] }));
     tvWs.send(packTv({ m: 'quote_set_fields', p: [session, 'lp', 'bid', 'ask', 'ch', 'chp'] }));
-    tvWs.send(packTv({ m: 'quote_add_symbols', p: [session, ...Object.keys(spotSymbols)] }));
+    tvWs.send(packTv({ m: 'quote_add_symbols', p: [session, ...Object.keys(spotSymbols), ...futuresSymbols] }));
   });
 
   tvWs.on('message', (raw) => {
@@ -308,14 +321,25 @@ function connectTvWs() {
         const msg = JSON.parse(c);
         if (msg.m === 'qsd' && msg.p && msg.p[1]) {
           const data = msg.p[1];
-          const key = spotSymbols[data.n];
-          if (!key || !data.v) continue;
-          const cur = spotState[key] || { symbol: key, bid: null, ask: null, close: null, change: 0 };
-          if (data.v.bid  != null) cur.bid   = data.v.bid;
-          if (data.v.ask  != null) cur.ask   = data.v.ask;
-          if (data.v.lp   != null) cur.close = data.v.lp;
-          if (data.v.ch   != null) cur.change = data.v.ch;
-          spotState[key] = cur;
+          if (!data.v) continue;
+          const shortKey = spotSymbols[data.n];
+          if (shortKey) {
+            // Spot
+            const cur = spotState[shortKey] || { symbol: shortKey, bid: null, ask: null, close: null, change: 0 };
+            if (data.v.bid  != null) cur.bid   = data.v.bid;
+            if (data.v.ask  != null) cur.ask   = data.v.ask;
+            if (data.v.lp   != null) cur.close = data.v.lp;
+            if (data.v.ch   != null) cur.change = data.v.ch;
+            spotState[shortKey] = cur;
+          } else if (futuresSymbols.includes(data.n)) {
+            // Futures — real-time updates
+            const cur = futuresLiveState[data.n] || { symbol: data.n, bid: null, ask: null, close: null, change: 0 };
+            if (data.v.bid  != null) cur.bid   = data.v.bid;
+            if (data.v.ask  != null) cur.ask   = data.v.ask;
+            if (data.v.lp   != null) cur.close = data.v.lp;
+            if (data.v.ch   != null) cur.change = data.v.ch;
+            futuresLiveState[data.n] = cur;
+          }
         }
       } catch(e) {}
     }
@@ -325,11 +349,26 @@ function connectTvWs() {
       const prices = { ...spotState };
       const augUsd = latestRates.augmont?.prices?.USDINR;
       if (augUsd) {
-        // Augmont USD/INR is Firebase-live and India-specific; prefer it
         prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
       }
       latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
       broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+
+      // Also update tradingview snapshot with live futures values, then rebroadcast futures
+      if (latestRates.tradingview && Object.keys(futuresLiveState).length) {
+        Object.entries(futuresLiveState).forEach(([sym, live]) => {
+          if (latestRates.tradingview.prices[sym]) {
+            const p = latestRates.tradingview.prices[sym];
+            if (live.close != null) p.close = live.close;
+            if (live.bid   != null) p.bid   = live.bid;
+            if (live.ask   != null) p.ask   = live.ask;
+            if (live.change != null) p.change = live.change;
+            p.live = true;
+          }
+        });
+        latestRates.tradingview.timestamp = Date.now();
+        broadcast({ type: 'rates', source: 'tradingview', timestamp: Date.now(), prices: latestRates.tradingview.prices });
+      }
     }
   });
 
@@ -388,16 +427,19 @@ async function fetchTradingView() {
       const [name, description, close, change, expiration, bid, ask] = row.d;
       // Skip variants we don't need
       if (/PETAL|GUINEA|4GC|SGC|SGU|1OZ|SHANGHAI/.test(row.s)) return;
+      // Prefer live WebSocket price if we're subscribed to this symbol
+      const live = futuresLiveState[row.s];
       prices[row.s] = {
         symbol: row.s,
         name,
         description,
-        metal,               // 'gold' | 'silver'
-        close: parseFloat(close),
-        change: parseFloat(change),
+        metal,
+        close: live?.close ?? parseFloat(close),
+        change: live?.change ?? parseFloat(change),
         expiration,
-        bid: bid ? parseFloat(bid) : null,
-        ask: ask ? parseFloat(ask) : null,
+        bid: live?.bid ?? (bid ? parseFloat(bid) : null),
+        ask: live?.ask ?? (ask ? parseFloat(ask) : null),
+        live: !!live,        // marker: is this a real-time WS price?
       };
     };
     (gold.data || []).forEach(r => addRow(r, 'gold'));

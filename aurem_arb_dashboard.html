@@ -119,6 +119,28 @@
   }
   .tab-btn.active { background: var(--surface); color: var(--gold); border-color: var(--gold); }
 
+  /* Arbitrage banner */
+  .arb-banner {
+    padding: 20px 24px; border-radius: 12px; border: 2px solid;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 20px; align-items: center;
+    transition: all 0.3s ease;
+  }
+  .arb-banner-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7; }
+  .arb-banner-value { font-size: 1.6rem; font-weight: 800; letter-spacing: 1px; }
+  .arb-banner-sub   { font-size: 0.85rem; opacity: 0.9; text-align: right; }
+  .arb-none { background: rgba(107,114,128,0.1); border-color: var(--muted); color: var(--muted); }
+  .arb-yes  { background: rgba(34,197,94,0.15);  border-color: var(--green); color: var(--green); animation: arbPulse 2s infinite; }
+  .arb-neg  { background: rgba(239,68,68,0.15);  border-color: var(--red);   color: var(--red);   animation: arbPulse 2s infinite; }
+  @keyframes arbPulse { 0%,100% { box-shadow: 0 0 0 0 currentColor; } 50% { box-shadow: 0 0 0 8px transparent; } }
+
+  /* Opportunity chip in table cells */
+  .opp-chip { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.5px; }
+  .opp-chip.yes { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid var(--green); }
+  .opp-chip.no  { background: rgba(107,114,128,0.1); color: var(--muted); border: 1px solid var(--border); }
+
+  /* Live tick indicator */
+  .live-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; margin-left: 6px; background: rgba(34,197,94,0.2); color: var(--green); border: 1px solid var(--green); }
+
   /* Live tick flash on spot values */
   .tick-flash { animation: tickFlash 0.5s ease; }
   @keyframes tickFlash {
@@ -182,8 +204,12 @@
       <input type="number" id="dutyPct" value="15.2" step="0.1" oninput="render()">
     </div>
     <div class="config-item">
+      <label>Arb Threshold %</label>
+      <input type="number" id="arbThreshold" value="1.5" step="0.1" oninput="render()">
+    </div>
+    <div class="config-item">
       <label>Purity Factor</label>
-      <input type="number" id="purity" value="0.995" step="0.001" oninput="render()">
+      <input type="number" id="purity" value="0.999" step="0.001" oninput="render()">
     </div>
     <div class="config-item">
       <label>Gold $ Spot</label>
@@ -199,6 +225,13 @@
     </div>
   </div>
 
+  <!-- ─── Arbitrage Opportunity Banner ─── -->
+  <div id="arb-banner" class="arb-banner arb-none">
+    <div class="arb-banner-label">Arbitrage Status</div>
+    <div class="arb-banner-value" id="arb-banner-value">Analyzing…</div>
+    <div class="arb-banner-sub"    id="arb-banner-sub">—</div>
+  </div>
+
   <!-- ─── Summary Card ─── -->
   <div class="summary-card">
     <table>
@@ -211,11 +244,11 @@
         <td id="hdr-spot">—</td>
       </tr>
       <tr>
-        <td>International Parity Price (995 Purity) (in Rs.)</td>
+        <td>International Parity Price (999 Purity) (in Rs.)</td>
         <td id="hdr-parity">—</td>
       </tr>
       <tr>
-        <td>Domestic Spot (995 Purity) (in Rs.)</td>
+        <td>Domestic Spot (999 Purity) (in Rs.)</td>
         <td id="hdr-local">—</td>
       </tr>
       <tr class="prem">
@@ -286,6 +319,7 @@
           <th class="hdr-implied">Implied ₹/10g (+duty)</th>
           <th class="hdr-spread">Spread ₹/10g</th>
           <th>Ann. Spread %</th>
+          <th>Opportunity</th>
         </tr>
       </thead>
       <tbody id="arb-tbody">
@@ -396,11 +430,9 @@ function render() {
     ? (spotUSD * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100)
     : null;
 
-  // Domestic spot — from Augmont
-  // Gold: 10GMUM995 (₹/10g for 995 purity)
-  // Silver: SIL10GM999 × 100 = ₹/kg for 999 silver
+  // Domestic spot (999 pure) — from Augmont
   const domesticSpot = isGold
-    ? (aug['10GMUM995']?.sell ?? null)
+    ? (aug['10GMUM999']?.sell ?? null)
     : (aug['SIL10GM999']?.sell != null ? aug['SIL10GM999'].sell * 100 : null);
 
   const now = new Date();
@@ -416,9 +448,9 @@ function render() {
   document.querySelector('#hdr-spot').closest('tr').querySelector('td:first-child').textContent =
     (isGold ? 'Gold' : 'Silver') + ' ($ Spot in per troy oz.)';
   document.querySelector('#hdr-parity').closest('tr').querySelector('td:first-child').textContent =
-    `International Parity Price (${isGold ? '995' : '999'} Purity) (${unitLabel === '/10g' ? '₹/10g' : '₹/kg'})`;
+    `International Parity Price (999 Purity) (${unitLabel === '/10g' ? '₹/10g' : '₹/kg'})`;
   document.querySelector('#hdr-local').closest('tr').querySelector('td:first-child').textContent =
-    `Domestic Spot (${isGold ? '995' : '999'} Purity) (${unitLabel === '/10g' ? '₹/10g' : '₹/kg'})`;
+    `Domestic Spot (999 Purity) (${unitLabel === '/10g' ? '₹/10g' : '₹/kg'})`;
 
   const premEl = document.getElementById('hdr-prem');
   if (domesticSpot != null && intlParity != null) {
@@ -428,14 +460,21 @@ function render() {
     premEl.textContent = '—';
   }
 
-  // Filter TradingView contracts by metal
+  // Filter TradingView contracts by metal + only near-term (front + next 180 days)
   const tv = S.tv;
   const mcxRows = [];
   const comexRows = [];
+  const now = Date.now();
+  const cutoff = now + 180 * 86400e3;
 
   Object.values(tv).forEach(c => {
     if (!c || c.close == null) return;
-    if (c.metal !== metal) return;   // filter by active tab
+    if (c.metal !== metal) return;
+    // Skip contracts with no expiration OR expiring > 180 days out
+    const d = parseExp(c.expiration);
+    if (!d) return;
+    if (d.getTime() < now) return;    // already expired
+    if (d.getTime() > cutoff) return; // too far out — clutter
     if (c.symbol.startsWith('MCX:')) mcxRows.push(c);
     if (c.symbol.startsWith('COMEX:')) comexRows.push(c);
   });
@@ -453,8 +492,9 @@ function render() {
     const annDom = (domesticSpot != null && days != null) ? annualize(c.close - domesticSpot, domesticSpot, days) : null;
     const annIntl = (intlParity   != null && days != null) ? annualize(c.close - intlParity,   intlParity,   days) : null;
     const cls = isGold ? 'val-gold' : 'val-blue';
+    const liveBadge = c.live ? '<span class="live-badge">LIVE</span>' : '';
     return `<tr>
-      <td>${c.description}</td>
+      <td>${c.description}${liveBadge}</td>
       <td>${fmtExp(c.expiration)}</td>
       <td class="${cls}">${INR(c.close)}</td>
       <td>${fmtPct(annDom)}</td>
@@ -468,8 +508,9 @@ function render() {
     const days = daysTo(c.expiration);
     const prem = spotUSD != null ? c.close - spotUSD : null;
     const ann = (spotUSD != null && days != null) ? annualize(prem, spotUSD, days) : null;
+    const liveBadge = c.live ? '<span class="live-badge">LIVE</span>' : '';
     return `<tr>
-      <td>${c.description}</td>
+      <td>${c.description}${liveBadge}</td>
       <td>${fmtExp(c.expiration)}</td>
       <td class="val-blue">${USD(c.close)}</td>
       <td>${fmtDelta(prem, 'usd')}</td>
@@ -484,10 +525,11 @@ function render() {
   document.querySelectorAll('.hdr-spread').forEach(h => h.textContent     = `Spread ₹${unitLabel}`);
 
   // Cross-market arbitrage — pair each MCX contract with nearest-maturity COMEX
+  const arbThreshold = parseFloat(document.getElementById('arbThreshold').value) || 1.5;
+  let bestArbAnn = null, bestArbRow = null;
   const arbHtml = (mcxRows.length && comexRows.length && usdinr != null) ? mcxRows.map(m => {
     const mDate = parseExp(m.expiration);
     if (!mDate) return '';
-    // Find closest COMEX contract by expiration
     let best = null, bestDelta = Infinity;
     comexRows.forEach(c => {
       const cDate = parseExp(c.expiration);
@@ -500,9 +542,20 @@ function render() {
     const spread = m.close - impliedINR;
     const days = daysTo(m.expiration);
     const annSpread = (impliedINR != null && days != null) ? annualize(spread, impliedINR, days) : null;
+    const isOpportunity = annSpread != null && Math.abs(annSpread) >= arbThreshold;
+    const oppChip = isOpportunity
+      ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
+      : `<span class="opp-chip no">—</span>`;
+    // Track the biggest opportunity for the banner
+    if (annSpread != null && (bestArbAnn == null || Math.abs(annSpread) > Math.abs(bestArbAnn))) {
+      bestArbAnn = annSpread;
+      bestArbRow = { mcx: m, comex: best, spread, days };
+    }
     const cls = isGold ? 'val-gold' : 'val-blue';
-    return `<tr>
-      <td>${m.description.split(' Futures')[0].trim()}</td>
+    const rowStyle = isOpportunity ? ` style="background: ${annSpread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+    const liveBadge = (m.live || best.live) ? '<span class="live-badge">LIVE</span>' : '';
+    return `<tr${rowStyle}>
+      <td>${m.description.split(' Futures')[0].trim()}${liveBadge}</td>
       <td>${m.description}</td>
       <td class="${cls}">${INR(m.close)}</td>
       <td>${best.description}</td>
@@ -510,9 +563,27 @@ function render() {
       <td>${INR(impliedINR)}</td>
       <td>${fmtDelta(spread)}</td>
       <td>${fmtPct(annSpread)}</td>
+      <td>${oppChip}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:30px">Waiting for data...</td></tr>';
+  }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px">Waiting for data...</td></tr>';
   document.getElementById('arb-tbody').innerHTML = arbHtml;
+
+  // Update headline arb banner based on best opportunity
+  const banner = document.getElementById('arb-banner');
+  const bannerVal = document.getElementById('arb-banner-value');
+  const bannerSub = document.getElementById('arb-banner-sub');
+  if (bestArbRow && Math.abs(bestArbAnn) >= arbThreshold) {
+    const dir = bestArbAnn > 0 ? 'MCX PREMIUM' : 'MCX DISCOUNT';
+    const cls = bestArbAnn > 0 ? 'arb-yes' : 'arb-neg';
+    banner.className = 'arb-banner ' + cls;
+    bannerVal.textContent = `▲ ARBITRAGE OPPORTUNITY — ${dir}`;
+    bannerSub.innerHTML = `${bestArbRow.mcx.description} vs ${bestArbRow.comex.description}<br>` +
+                         `Spread: ${fmtDelta(bestArbRow.spread)} · ${fmtPct(bestArbAnn)} ann. · ${bestArbRow.days}d to expiry`;
+  } else {
+    banner.className = 'arb-banner arb-none';
+    bannerVal.textContent = bestArbAnn != null ? `Below Threshold (best ${bestArbAnn.toFixed(2)}%)` : 'No Data';
+    bannerSub.innerHTML = `Threshold: ${arbThreshold}% ann. spread · Adjust in config bar`;
+  }
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
