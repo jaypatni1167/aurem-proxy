@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUREM Rate Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c28;
+    --border: #2a2a3a;
+    --gold: #f5c842;
+    --silver: #b0b8c8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #60a5fa;
+    --orange: #fb923c;
+    --text: #e8e8f0;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', sans-serif; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: 3px; color: var(--gold); }
+  .logo span { color: var(--text); font-weight: 300; }
+  .header-meta { display: flex; gap: 18px; align-items: center; }
+  .pill { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border); }
+  .pill.live { border-color: var(--green); color: var(--green); }
+  .pill.off  { border-color: var(--red);   color: var(--red);   }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #clock { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .section-title {
+    padding: 12px 20px;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-title .tag { font-size: 0.62rem; padding: 2px 8px; border-radius: 10px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 20px; text-align: right;
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  th:first-child { text-align: left; }
+  td {
+    padding: 14px 20px; text-align: right;
+    font-size: 0.95rem; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--border);
+  }
+  td:first-child { text-align: left; font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  .val-gold   { color: var(--gold);   font-weight: 700; }
+  .val-silver { color: var(--silver); font-weight: 700; }
+  .val-blue   { color: var(--blue);   font-weight: 700; }
+  .val-green  { color: var(--green);  font-weight: 700; }
+  .val-red    { color: var(--red);    font-weight: 700; }
+  .val-orange { color: var(--orange); font-weight: 700; }
+  .val-muted  { color: var(--muted);  font-weight: 500; }
+
+  .chip { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; }
+  .chip.prem { background: rgba(239,68,68,0.12); color: var(--red); }
+  .chip.disc { background: rgba(34,197,94,0.12); color: var(--green); }
+  .chip.zero { background: var(--surface2);      color: var(--muted); }
+
+  .input-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+    padding: 20px;
+  }
+  .input-group { display: flex; flex-direction: column; gap: 6px; }
+  .input-group label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .input-group input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; color: var(--text); font-size: 1rem; font-variant-numeric: tabular-nums;
+    outline: none;
+  }
+  .input-group input:focus { border-color: var(--gold); }
+
+  .update-bar {
+    padding: 8px 28px; font-size: 0.72rem; color: var(--muted);
+    border-top: 1px solid var(--border); background: var(--surface);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+
+  @media(max-width:700px) {
+    .main { padding: 14px; gap: 14px; }
+    th, td { padding: 10px 12px; font-size: 0.82rem; }
+    .input-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">AUREM <span>RATES</span></div>
+  <div class="header-meta">
+    <div class="pill off" id="statusPill">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusLabel">Connecting...</span>
+      <span style="margin-left:8px;opacity:0.7;font-size:0.7rem" id="msgCounter">0 msgs</span>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ─── Table 1: International Spot Rates + USD ─── -->
+  <div class="section">
+    <div class="section-title">
+      International Spot Rates &amp; USD/INR
+      <span class="tag" id="intl-source-tag">gold-api.com</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Instrument</th>
+          <th>Bid</th>
+          <th>Ask</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Gold (XAUUSD) $/oz</td>
+          <td class="val-blue" id="xau-bid">—</td>
+          <td class="val-blue" id="xau-ask">—</td>
+          <td class="val-muted" id="xau-inr">— ₹/10g (raw)</td>
+        </tr>
+        <tr>
+          <td>Silver (XAGUSD) $/oz</td>
+          <td class="val-silver" id="xag-bid">—</td>
+          <td class="val-silver" id="xag-ask">—</td>
+          <td class="val-muted" id="xag-inr">— ₹/10g (raw)</td>
+        </tr>
+        <tr>
+          <td>USD/INR — Augmont</td>
+          <td class="val-green" id="aug-usd-buy">—</td>
+          <td class="val-green" id="aug-usd-sell">—</td>
+          <td class="val-muted">Firebase</td>
+        </tr>
+        <tr>
+          <td>USD/INR — Arihant</td>
+          <td class="val-green" id="ari-usd-buy">—</td>
+          <td class="val-green" id="ari-usd-sell">—</td>
+          <td class="val-muted">bcast</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Merged Gold Table ─── -->
+  <div class="section">
+    <div class="section-title">
+      Gold — All Rates Compared (₹/10g)
+      <span class="tag" id="goldDutyTag">MCX Duty baseline</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Source · Product</th>
+          <th>Rate</th>
+          <th>vs MCX Duty</th>
+          <th>vs Source MCX Costing</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--surface2)">
+          <td><b>MCX Duty Base</b> <span style="font-size:0.7rem;color:var(--muted)">($/oz × USD/INR × 1.152)</span></td>
+          <td class="val-orange" id="gd-duty">—</td>
+          <td class="val-muted">baseline</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Augmont · MCX Costing</td>
+          <td class="val-orange" id="gd-augMcx">—</td>
+          <td id="gd-augMcx-vsDuty">—</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Augmont · 1 KG 999 Sell</td>
+          <td class="val-gold" id="gd-aug999">—</td>
+          <td id="gd-aug999-vsDuty">—</td>
+          <td id="gd-aug999-vsMcx">—</td>
+        </tr>
+        <tr>
+          <td>Augmont · 1 KG 995 Sell</td>
+          <td class="val-gold" id="gd-aug995">—</td>
+          <td id="gd-aug995-vsDuty">—</td>
+          <td id="gd-aug995-vsMcx">—</td>
+        </tr>
+        <tr>
+          <td>Arihant · MCX Costing</td>
+          <td class="val-orange" id="gd-ariMcx">—</td>
+          <td id="gd-ariMcx-vsDuty">—</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Arihant · 1 KG 999 Sell</td>
+          <td class="val-gold" id="gd-ari999">—</td>
+          <td id="gd-ari999-vsDuty">—</td>
+          <td id="gd-ari999-vsMcx">—</td>
+        </tr>
+        <tr>
+          <td>Arihant · 1 KG 995 Sell</td>
+          <td class="val-gold" id="gd-ari995">—</td>
+          <td id="gd-ari995-vsDuty">—</td>
+          <td id="gd-ari995-vsMcx">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Merged Silver Table ─── -->
+  <div class="section">
+    <div class="section-title">
+      Silver — All Rates Compared (₹/kg)
+      <span class="tag" id="silvDutyTag">MCX Duty baseline</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Source · Product</th>
+          <th>Rate</th>
+          <th>vs MCX Duty</th>
+          <th>vs Source MCX Costing</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background:var(--surface2)">
+          <td><b>MCX Duty Base</b> <span style="font-size:0.7rem;color:var(--muted)">($/oz × USD/INR × 1.152)</span></td>
+          <td class="val-orange" id="sv-duty">—</td>
+          <td class="val-muted">baseline</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Augmont · MCX Costing</td>
+          <td class="val-orange" id="sv-augMcx">—</td>
+          <td id="sv-augMcx-vsDuty">—</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Augmont · 30 KG 999 Sell</td>
+          <td class="val-silver" id="sv-aug30">—</td>
+          <td id="sv-aug30-vsDuty">—</td>
+          <td id="sv-aug30-vsMcx">—</td>
+        </tr>
+        <tr>
+          <td>Arihant · MCX Costing</td>
+          <td class="val-orange" id="sv-ariMcx">—</td>
+          <td id="sv-ariMcx-vsDuty">—</td>
+          <td class="val-muted">—</td>
+        </tr>
+        <tr>
+          <td>Arihant · 30 KG 999 Sell</td>
+          <td class="val-silver" id="sv-ari30">—</td>
+          <td id="sv-ari30-vsDuty">—</td>
+          <td id="sv-ari30-vsMcx">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Table 4: Premium/Discount over MCX Duty Rate ─── -->
+  <div class="section">
+    <div class="section-title">
+      Your Sell Rate = MCX Duty Rate + Your Premium/Discount
+      <span class="tag">Enter ₹ premium (positive) or discount (negative)</span>
+    </div>
+    <div class="input-row">
+      <div class="input-group">
+        <label>Gold 999 — Premium/Discount (₹/10g)</label>
+        <input type="number" id="myGold999Prem" placeholder="e.g. 200 or -150" oninput="calcMyRate()">
+      </div>
+      <div class="input-group">
+        <label>Gold 995 — Premium/Discount (₹/10g)</label>
+        <input type="number" id="myGold995Prem" placeholder="e.g. -500" oninput="calcMyRate()">
+      </div>
+      <div class="input-group">
+        <label>Silver 999 — Premium/Discount (₹/kg)</label>
+        <input type="number" id="mySilverPrem" placeholder="e.g. 500" oninput="calcMyRate()">
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>MCX Duty Base ₹/10g</th>
+          <th>± Your Premium</th>
+          <th>Your Sell Rate</th>
+          <th>vs Augmont</th>
+          <th>vs Arihant</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Gold 999</td>
+          <td class="val-orange" id="my-g999-base">—</td>
+          <td id="my-g999-prem">—</td>
+          <td class="val-gold" id="my-g999-val">—</td>
+          <td id="my-g999-aug">—</td>
+          <td id="my-g999-ari">—</td>
+        </tr>
+        <tr>
+          <td>Gold 995</td>
+          <td class="val-orange" id="my-g995-base">—</td>
+          <td id="my-g995-prem">—</td>
+          <td class="val-gold" id="my-g995-val">—</td>
+          <td id="my-g995-aug">—</td>
+          <td id="my-g995-ari">—</td>
+        </tr>
+        <tr>
+          <td>Silver 999</td>
+          <td class="val-orange" id="my-sil-base">—</td>
+          <td id="my-sil-prem">—</td>
+          <td class="val-silver" id="my-sil-val">—</td>
+          <td id="my-sil-aug">—</td>
+          <td id="my-sil-ari">—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<div class="update-bar">
+  <span>Augmont: <b id="aug-update">—</b></span>
+  <span>Arihant: <b id="ari-update">—</b></span>
+  <span>Intl: <b id="intl-update">—</b></span>
+</div>
+
+<script>
+const S = {
+  aug: {}, ari: {}, mt5: {},
+  xauBid: null, xauAsk: null,
+  xagBid: null, xagAsk: null,
+  intlSource: 'gold-api.com',
+};
+
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST';
+}, 1000);
+
+const INR = v => v != null && !isNaN(v) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
+const USD = v => v != null && !isNaN(v) ? '$' + Number(v).toFixed(2) : '—';
+
+// Look up a price entry by trying exact keys first, then prefix
+function findKey(obj, ...candidates) {
+  for (const c of candidates) {
+    if (obj[c]) return obj[c];
+  }
+  // Last candidate is treated as a prefix to scan keys
+  const prefix = candidates[candidates.length - 1];
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith(prefix)) return obj[key];
+  }
+  return null;
+}
+
+function chip(diff, format = 'inr') {
+  if (diff == null) return '—';
+  const f = format === 'inr' ? INR(Math.abs(diff)) : Math.abs(diff).toFixed(2);
+  if (diff > 0) return `<span class="chip prem">+${f} Premium</span>`;
+  if (diff < 0) return `<span class="chip disc">−${f} Discount</span>`;
+  return `<span class="chip zero">At MCX</span>`;
+}
+
+function simpleDiff(diff) {
+  if (diff == null) return '—';
+  const cls = diff > 0 ? 'prem' : diff < 0 ? 'disc' : 'zero';
+  const sign = diff > 0 ? '+' : diff < 0 ? '−' : '';
+  return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>`;
+}
+
+function render() {
+  const aug = S.aug, ari = S.ari;
+
+  // ── Table 1: International Spot Rates + USD ─────────────
+  document.getElementById('intl-source-tag').textContent = S.intlSource;
+  document.getElementById('xau-bid').textContent = USD(S.xauBid);
+  document.getElementById('xau-ask').textContent = USD(S.xauAsk);
+  document.getElementById('xag-bid').textContent = USD(S.xagBid);
+  document.getElementById('xag-ask').textContent = USD(S.xagAsk);
+
+  const augFx = aug['USDINR'];
+  const ariFx = ari['USD_INR'];
+  if (augFx) {
+    document.getElementById('aug-usd-buy').textContent  = '₹' + Number(augFx.buy).toFixed(4);
+    document.getElementById('aug-usd-sell').textContent = '₹' + Number(augFx.sell).toFixed(4);
+  }
+  if (ariFx) {
+    document.getElementById('ari-usd-buy').textContent  = '₹' + Number(ariFx.buy).toFixed(4);
+    document.getElementById('ari-usd-sell').textContent = '₹' + Number(ariFx.sell).toFixed(4);
+  }
+
+  const fxForCalc = augFx?.buy ?? ariFx?.buy ?? null;
+  if (S.xauAsk && fxForCalc) {
+    const inr = (S.xauAsk / 31.1035) * fxForCalc * 10;
+    document.getElementById('xau-inr').textContent = INR(inr) + ' / 10g (raw)';
+  }
+  if (S.xagAsk && fxForCalc) {
+    const inr = (S.xagAsk / 31.1035) * fxForCalc * 1000;  // ₹/kg
+    document.getElementById('xag-inr').textContent = INR(inr) + ' / kg (raw)';
+  }
+
+  // ── Merged Gold + Silver Tables ──────────────────────────
+  const goldAsk = S.xauAsk;
+  const silvAsk = S.xagAsk;
+  const fx = augFx?.buy ?? ariFx?.buy ?? null;
+
+  // GOLD
+  const goldDuty = (goldAsk && fx) ? (goldAsk / 31.1035) * fx * 10 * 1.152 : null;
+  const goldAugMcx = aug['GOLDMUM999M']?.sell ?? null;
+  const goldAriMcx = ari['GOLD_COST']?.sell ?? null;
+  const goldAug999 = aug['10GMUM999']?.sell ?? null;
+  const goldAug995 = aug['10GMUM995']?.sell ?? null;
+
+  const ari999Raw = findKey(ari, 'GOLD_999_IND-BIS_(100GM)_T+0', 'GOLD_999_IND-BIS_(100GM)_', 'GOLD_999_INDIAN_(1KG)_T+0', 'GOLD_999_IND-BIS_');
+  const ari995Raw = findKey(ari, 'GOLD_995_(1KG)_IND-BIS_T+0', 'GOLD_995_(1KG)_IND-BIS_', 'GOLD_995_(1KG)_');
+  const goldAri999 = ari999Raw ? (ari999Raw.sell > 0 ? ari999Raw.sell : ari999Raw.buy) : null;
+  const goldAri995 = ari995Raw ? (ari995Raw.sell > 0 ? ari995Raw.sell : ari995Raw.buy) : null;
+
+  setText('gd-duty',   goldDuty != null ? INR(goldDuty) : '—');
+  fillCompare('gd-augMcx', goldAugMcx, goldDuty, null);
+  fillCompare('gd-aug999', goldAug999, goldDuty, goldAugMcx);
+  fillCompare('gd-aug995', goldAug995, goldDuty, goldAugMcx);
+  fillCompare('gd-ariMcx', goldAriMcx, goldDuty, null);
+  fillCompare('gd-ari999', goldAri999, goldDuty, goldAriMcx);
+  fillCompare('gd-ari995', goldAri995, goldDuty, goldAriMcx);
+
+  // SILVER — all values in ₹/kg
+  const silvDuty   = (silvAsk && fx) ? (silvAsk / 31.1035) * fx * 1000 * 1.152 : null;
+  const silvAugMcx = aug['SILMUMT+2']?.sell ?? null;
+  const silvAriMcx = ari['SILVER_COSTING']?.sell ?? null;
+  const augSil10g  = aug['SIL10GM999']?.sell ?? null;
+  const silvAug30  = augSil10g != null ? augSil10g * 100 : null;
+  const ariSil30Raw = findKey(ari, 'SILVER_IMPORTED_(30KG)_T+0', 'SILVER_IMPORTED_(30KG)_', 'SILVER_IMPORTED_');
+  const silvAri30   = ariSil30Raw ? (ariSil30Raw.sell > 0 ? ariSil30Raw.sell : ariSil30Raw.buy) : null;
+
+  setText('sv-duty',   silvDuty != null ? INR(silvDuty) + '/kg' : '—');
+  fillCompare('sv-augMcx', silvAugMcx, silvDuty, null, '/kg');
+  fillCompare('sv-aug30',  silvAug30,  silvDuty, silvAugMcx, '/kg');
+  fillCompare('sv-ariMcx', silvAriMcx, silvDuty, null, '/kg');
+  fillCompare('sv-ari30',  silvAri30,  silvDuty, silvAriMcx, '/kg');
+
+  // ── Table 4: Your rate vs market ────────────────────────
+  calcMyRate();
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function fillCompare(id, rate, dutyBase, mcxRef, unit = '') {
+  const rateEl    = document.getElementById(id);
+  const vsDutyEl  = document.getElementById(id + '-vsDuty');
+  const vsMcxEl   = document.getElementById(id + '-vsMcx');
+
+  if (rateEl) rateEl.textContent = rate != null ? INR(rate) + unit : '—';
+
+  if (vsDutyEl) {
+    if (rate != null && dutyBase != null) vsDutyEl.innerHTML = simpleDiff(rate - dutyBase);
+    else vsDutyEl.innerHTML = '—';
+  }
+  if (vsMcxEl) {
+    if (rate != null && mcxRef != null) vsMcxEl.innerHTML = simpleDiff(rate - mcxRef);
+    else vsMcxEl.innerHTML = '—';
+  }
+}
+
+function fillRow(id, rate, mcx, unit = '') {
+  document.getElementById(id).textContent     = rate != null ? INR(rate) + unit : '—';
+  document.getElementById(id + '-mcx').textContent = mcx != null ? INR(mcx) + unit : '—';
+  if (rate != null && mcx != null) {
+    const diff = rate - mcx;
+    document.getElementById(id + '-diff').innerHTML = simpleDiff(diff);
+    document.getElementById(id + '-chip').innerHTML = chip(diff);
+  } else {
+    document.getElementById(id + '-diff').innerHTML = '—';
+    document.getElementById(id + '-chip').innerHTML = '—';
+  }
+}
+
+function calcMyRate() {
+  const premG999 = parseFloat(document.getElementById('myGold999Prem').value);
+  const premG995 = parseFloat(document.getElementById('myGold995Prem').value);
+  const premSil  = parseFloat(document.getElementById('mySilverPrem').value);
+
+  const aug = S.aug, ari = S.ari;
+  const augG999 = aug['10GMUM999']?.sell ?? null;
+  const augG995 = aug['10GMUM995']?.sell ?? null;
+  const augSil  = aug['SIL10GM999']?.sell != null ? aug['SIL10GM999'].sell * 100 : null;  // ₹/kg
+
+  const ari999Raw = findKey(ari, 'GOLD_999_IND-BIS_(100GM)_T+0', 'GOLD_999_IND-BIS_(100GM)_', 'GOLD_999_INDIAN_(1KG)_T+0', 'GOLD_999_IND-BIS_');
+  const ari995Raw = findKey(ari, 'GOLD_995_(1KG)_IND-BIS_T+0', 'GOLD_995_(1KG)_IND-BIS_', 'GOLD_995_(1KG)_');
+  const ariSilRaw = ari['SILVER_COSTING'];
+
+  const ariG999 = ari999Raw ? (ari999Raw.sell > 0 ? ari999Raw.sell : ari999Raw.buy) : null;
+  const ariG995 = ari995Raw ? (ari995Raw.sell > 0 ? ari995Raw.sell : ari995Raw.buy) : null;
+  const ariSil  = ariSilRaw ? ariSilRaw.sell : null;  // already ₹/kg
+
+  const augFx = aug['USDINR']?.buy;
+  // Duty base rates
+  const goldDuty999 = S.xauAsk && augFx ? (S.xauAsk / 31.1035) * augFx * 10 * 1.152 : null;       // ₹/10g
+  const goldDuty995 = goldDuty999 != null ? goldDuty999 * 0.995 : null;
+  const silvDuty    = S.xagAsk && augFx ? (S.xagAsk / 31.1035) * augFx * 1000 * 1.152 : null;     // ₹/kg
+
+  renderMyRow('g999', goldDuty999, premG999, augG999, ariG999);
+  renderMyRow('g995', goldDuty995, premG995, augG995, ariG995);
+  renderMyRow('sil',  silvDuty,    premSil,  augSil,  ariSil, '/kg');
+}
+
+function renderMyRow(key, base, prem, augRef, ariRef, unit = '') {
+  const baseEl = document.getElementById('my-' + key + '-base');
+  const premEl = document.getElementById('my-' + key + '-prem');
+  const valEl  = document.getElementById('my-' + key + '-val');
+  const augEl  = document.getElementById('my-' + key + '-aug');
+  const ariEl  = document.getElementById('my-' + key + '-ari');
+
+  baseEl.textContent = base != null ? INR(base) + unit : '—';
+
+  if (isNaN(prem) || base == null) {
+    premEl.textContent = '—';
+    valEl.textContent  = '—';
+    augEl.innerHTML    = '—';
+    ariEl.innerHTML    = '—';
+    return;
+  }
+
+  const sign = prem > 0 ? '+' : prem < 0 ? '−' : '';
+  premEl.innerHTML = `<span class="chip ${prem > 0 ? 'prem' : prem < 0 ? 'disc' : 'zero'}">${sign}${INR(Math.abs(prem))}</span>`;
+
+  const myRate = base + prem;
+  valEl.textContent = INR(myRate) + unit;
+
+  augEl.innerHTML = augRef != null ? simpleDiff(myRate - augRef) : '—';
+  ariEl.innerHTML = ariRef != null ? simpleDiff(myRate - ariRef) : '—';
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+let ws, wsTimer;
+function connectWS() {
+  clearTimeout(wsTimer);
+  // Auto-detect server: use current host when served from proxy, fallback to localhost
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host  = location.host || 'localhost:3001';
+  const wsURL = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${host}/ws`;
+  ws = new WebSocket(wsURL);
+  ws.onopen = () => setStatus(true, 'Live · Firebase + bcast');
+  let msgCount = 0;
+  ws.onmessage = (e) => {
+    msgCount++;
+    document.getElementById('msgCounter').textContent = msgCount + ' msgs';
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type !== 'rates') return;
+      // DEBUG: log a sample value
+      if (msgCount % 5 === 0) {
+        if (msg.source === 'augmont') console.log('[Aug]', msg.prices['10GMUM999']?.sell, msg.prices['USDINR']?.buy);
+        if (msg.source === 'arihant') console.log('[Ari]', msg.prices['GOLD_COST']?.sell);
+        if (msg.source === 'mt5') console.log('[MT5]', msg.prices['XAUUSD']?.sell);
+      }
+      if (msg.source === 'augmont') {
+        S.aug = msg.prices;
+        document.getElementById('aug-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      } else if (msg.source === 'arihant') {
+        S.ari = msg.prices;
+        document.getElementById('ari-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      } else if (msg.source === 'mt5') {
+        S.mt5 = msg.prices;
+        S.xauBid = msg.prices.XAUUSD.buy;
+        S.xauAsk = msg.prices.XAUUSD.sell;
+        S.xagBid = msg.prices.XAGUSD.buy;
+        S.xagAsk = msg.prices.XAGUSD.sell;
+        S.intlSource = 'MT5 · Daman';
+        S._mt5LastTs = Date.now();
+        document.getElementById('intl-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      }
+      render();
+    } catch(e) { console.error(e); }
+  };
+  ws.onerror = () => {};
+  ws.onclose = () => {
+    setStatus(false, 'Proxy offline — run node server.js');
+    wsTimer = setTimeout(connectWS, 5000);
+  };
+}
+
+function setStatus(live, label) {
+  const pill = document.getElementById('statusPill');
+  const dot  = document.getElementById('statusDot');
+  pill.className = 'pill ' + (live ? 'live' : 'off');
+  dot.className  = 'dot ' + (live ? 'pulse' : '');
+  document.getElementById('statusLabel').textContent = label;
+}
+
+// ── International rates fallback ──────────────────────────────
+async function fetchIntl() {
+  if (S.mt5.XAUUSD && Date.now() - (S._mt5LastTs || 0) < 10000) return;
+  try {
+    const [xauRes, xagRes] = await Promise.all([
+      fetch('https://api.gold-api.com/price/XAU'),
+      fetch('https://api.gold-api.com/price/XAG'),
+    ]);
+    const xau = await xauRes.json();
+    const xag = await xagRes.json();
+    S.xauBid = xau.price - 0.5;
+    S.xauAsk = xau.price;
+    S.xagBid = xag.price - 0.01;
+    S.xagAsk = xag.price;
+    S.intlSource = 'gold-api.com';
+    document.getElementById('intl-update').textContent =
+      new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+    render();
+  } catch(e) { console.warn('[Intl]', e.message); }
+}
+
+connectWS();
+fetchIntl();
+setInterval(fetchIntl, 60000);
+</script>
+</body>
+</html>
