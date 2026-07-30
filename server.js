@@ -262,6 +262,55 @@ async function fetchArihant() {
 fetchArihant();
 setInterval(fetchArihant, 5000);
 
+// ── HTTP fallback for spot prices (works even where WS is blocked) ─────
+async function fetchTvSpotHttp() {
+  try {
+    const body = JSON.stringify({
+      symbols: { tickers: ['OANDA:XAUUSD', 'TVC:SILVER', 'FX_IDC:USDINR', 'NYMEX:CL1!', 'ICEEUR:BRN1!'] },
+      columns: ['close', 'bid', 'ask', 'change']
+    });
+    const res = await new Promise((resolve, reject) => {
+      const https = require('https');
+      const req = https.request({
+        hostname: 'scanner.tradingview.com', path: '/global/scan', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+      }, (r) => { let s = ''; r.on('data', c => s += c); r.on('end', () => resolve(s)); });
+      req.on('error', reject); req.write(body); req.end();
+    });
+    const parsed = JSON.parse(res);
+    const mapping = { 'OANDA:XAUUSD':'XAUUSD', 'TVC:SILVER':'XAGUSD', 'FX_IDC:USDINR':'USDINR', 'NYMEX:CL1!':'WTI', 'ICEEUR:BRN1!':'BRENT' };
+    (parsed.data || []).forEach(row => {
+      const [close, bid, ask, change] = row.d;
+      const key = mapping[row.s];
+      if (!key) return;
+      // Only update if WS hasn't fed this symbol in the last 10 seconds
+      const existing = spotState[key];
+      const wsIsFresh = existing && existing._wsFresh && existing._wsTs && (Date.now() - existing._wsTs < 10000);
+      if (!wsIsFresh) {
+        spotState[key] = {
+          symbol: key,
+          close: parseFloat(close),
+          bid: bid != null ? parseFloat(bid) : parseFloat(close),
+          ask: ask != null ? parseFloat(ask) : parseFloat(close),
+          change: change != null ? parseFloat(change) : 0,
+        };
+      }
+    });
+    // Broadcast with augmont USDINR override
+    const prices = { ...spotState };
+    const augUsd = latestRates.augmont?.prices?.USDINR;
+    if (augUsd) {
+      prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
+    }
+    latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
+    broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+  } catch (e) {
+    console.error('[TvSpot-HTTP]', e.message);
+  }
+}
+fetchTvSpotHttp();
+setInterval(fetchTvSpotHttp, 2000);
+
 // ── TradingView WebSocket — TRUE real-time XAU/XAG/USDINR ─────
 // Reverse-engineered from tradingview.com's own live chart feed.
 const WebSocketClient = require('ws');
@@ -337,6 +386,8 @@ function connectTvWs() {
             if (data.v.ask  != null) cur.ask   = data.v.ask;
             if (data.v.lp   != null) cur.close = data.v.lp;
             if (data.v.ch   != null) cur.change = data.v.ch;
+            cur._wsFresh = true;    // mark as freshly updated by WS
+            cur._wsTs = Date.now();
             spotState[shortKey] = cur;
           } else if (futuresSymbols.includes(data.n)) {
             // Futures — real-time updates
