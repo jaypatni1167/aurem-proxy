@@ -266,17 +266,23 @@ setInterval(fetchArihant, 5000);
 const WebSocketClient = require('ws');
 
 // Spot symbols
-const spotSymbols = { 'OANDA:XAUUSD': 'XAUUSD', 'TVC:SILVER': 'XAGUSD', 'FX_IDC:USDINR': 'USDINR' };
+const spotSymbols = {
+  'OANDA:XAUUSD':   'XAUUSD',
+  'TVC:SILVER':     'XAGUSD',
+  'FX_IDC:USDINR':  'USDINR',
+  'NYMEX:CL1!':     'WTI',
+  'ICEEUR:BRN1!':   'BRENT',
+};
 // Key futures contracts (front + near months) for real-time subscription
 const futuresSymbols = [
-  // MCX Gold — front month and next few
+  // MCX Gold, COMEX Gold
   'MCX:GOLD1!', 'MCX:GOLDM1!',
-  // COMEX Gold
   'COMEX:GC1!',
-  // MCX Silver
+  // MCX Silver, COMEX Silver
   'MCX:SILVER1!', 'MCX:SILVERM1!',
-  // COMEX Silver
   'COMEX:SI1!',
+  // WTI + Brent front months
+  'NYMEX:CL1!', 'ICEEUR:BRN1!',
 ];
 const spotState = {}; // keyed by short symbol
 const futuresLiveState = {}; // keyed by full TV symbol e.g. 'MCX:GOLD1!'
@@ -383,14 +389,14 @@ connectTvWs();
 // ── TradingView futures poller (MCX + COMEX gold + silver) ────
 let tvLastLog = 0;
 
-function tvScan(matchTerm) {
+function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,description', op = 'match') {
   const body = JSON.stringify({
     filter: [
-      { left: 'name,description', operation: 'match', right: matchTerm },
-      { left: 'exchange', operation: 'in_range', right: ['MCX', 'COMEX'] }
+      { left: field, operation: op, right: matchTerm },
+      { left: 'exchange', operation: 'in_range', right: exchanges }
     ],
     columns: ['name', 'description', 'close', 'change', 'expiration', 'bid', 'ask'],
-    range: [0, 60]
+    range: [0, 80]
   });
   return new Promise((resolve, reject) => {
     const https = require('https');
@@ -415,35 +421,37 @@ function tvScan(matchTerm) {
 
 async function fetchTradingView() {
   try {
-    const [goldRaw, silverRaw] = await Promise.all([
+    const [goldRaw, silverRaw, oilRaw] = await Promise.all([
       tvScan('GOLD'),
       tvScan('SILVER'),
+      tvScan('^(Crude Oil Futures|Brent Crude Futures)', ['NYMEX', 'ICEEUR'], 'description'),
     ]);
-    const gold = JSON.parse(goldRaw);
+    const gold   = JSON.parse(goldRaw);
     const silver = JSON.parse(silverRaw);
+    const oil    = JSON.parse(oilRaw);
 
     const prices = {};
     const addRow = (row, metal) => {
       const [name, description, close, change, expiration, bid, ask] = row.d;
-      // Skip variants we don't need
-      if (/PETAL|GUINEA|4GC|SGC|SGU|1OZ|SHANGHAI/.test(row.s)) return;
-      // Prefer live WebSocket price if we're subscribed to this symbol
+      // Skip variants we don't need for metals
+      if (metal !== 'oil' && /PETAL|GUINEA|4GC|SGC|SGU|1OZ|SHANGHAI/.test(row.s)) return;
       const live = futuresLiveState[row.s];
       prices[row.s] = {
         symbol: row.s,
         name,
         description,
-        metal,
+        metal,               // 'gold' | 'silver' | 'oil'
         close: live?.close ?? parseFloat(close),
         change: live?.change ?? parseFloat(change),
         expiration,
         bid: live?.bid ?? (bid ? parseFloat(bid) : null),
         ask: live?.ask ?? (ask ? parseFloat(ask) : null),
-        live: !!live,        // marker: is this a real-time WS price?
+        live: !!live,
       };
     };
-    (gold.data || []).forEach(r => addRow(r, 'gold'));
+    (gold.data   || []).forEach(r => addRow(r, 'gold'));
     (silver.data || []).forEach(r => addRow(r, 'silver'));
+    (oil.data    || []).forEach(r => addRow(r, 'oil'));
 
     const rates = { source: 'tradingview', timestamp: Date.now(), prices };
     latestRates.tradingview = rates;
@@ -452,7 +460,8 @@ async function fetchTradingView() {
     if (Date.now() - tvLastLog > 60000) {
       const g = Object.values(prices).filter(p => p.metal === 'gold').length;
       const s = Object.values(prices).filter(p => p.metal === 'silver').length;
-      console.log(`[TradingView] Updated — ${g} gold + ${s} silver contracts`);
+      const o = Object.values(prices).filter(p => p.metal === 'oil').length;
+      console.log(`[TradingView] Updated — ${g} gold + ${s} silver + ${o} oil contracts`);
       tvLastLog = Date.now();
     }
   } catch (e) {
