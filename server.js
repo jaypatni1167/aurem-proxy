@@ -25,6 +25,7 @@ function serveNoCache(res, file) {
 }
 app.get('/', (req, res) => serveNoCache(res, findHtml('aurem_rate_dashboard.html')));
 app.get('/arb', (req, res) => serveNoCache(res, findHtml('aurem_arb_dashboard.html')));
+app.get('/main', (req, res) => serveNoCache(res, findHtml('aurem_main_dashboard.html')));
 
 // ── MT5 price feed via file watching ──────────────────────────
 // MT5 Files folder on Mac (Wine) — search for it

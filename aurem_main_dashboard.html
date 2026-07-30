@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUREM Main Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c28;
+    --border: #2a2a3a;
+    --gold: #f5c842;
+    --silver: #b0b8c8;
+    --oil: #fb923c;
+    --blue: #60a5fa;
+    --green: #22c55e;
+    --red: #ef4444;
+    --text: #e8e8f0;
+    --muted: #6b7280;
+    --header: #2a4d80;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', sans-serif; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .logo { font-size: 1.25rem; font-weight: 800; letter-spacing: 3px; color: var(--gold); }
+  .logo span { color: var(--text); font-weight: 300; }
+  .header-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .pill { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border); }
+  .pill.live { border-color: var(--green); color: var(--green); }
+  .pill.off  { border-color: var(--red);   color: var(--red);   }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #clock { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .nav-link { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 0.72rem; color: var(--muted); text-decoration: none; }
+  .nav-link:hover { color: var(--gold); border-color: var(--gold); }
+
+  /* Live spot ticker at top */
+  .ticker-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    padding: 20px 24px 0;
+  }
+  .ticker {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; position: relative; overflow: hidden;
+  }
+  .ticker::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .ticker.gold::before   { background: var(--gold); }
+  .ticker.silver::before { background: var(--silver); }
+  .ticker.oil::before    { background: var(--oil); }
+  .ticker.fx::before     { background: var(--green); }
+  .ticker-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px; }
+  .ticker-val { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
+  .ticker.gold .ticker-val   { color: var(--gold); }
+  .ticker.silver .ticker-val { color: var(--silver); }
+  .ticker.oil .ticker-val    { color: var(--oil); }
+  .ticker.fx .ticker-val     { color: var(--green); }
+  .ticker-sub { font-size: 0.7rem; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tick-flash { animation: flashUp 0.6s ease; }
+  .tick-flash-dn { animation: flashDn 0.6s ease; }
+  @keyframes flashUp { 0%{background:rgba(34,197,94,0.35)} 100%{background:transparent} }
+  @keyframes flashDn { 0%{background:rgba(239,68,68,0.35)} 100%{background:transparent} }
+
+  /* Main content */
+  .main { padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  .config-bar {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 18px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .config-item { display: flex; align-items: center; gap: 8px; }
+  .config-item label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .config-item input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; color: var(--text); font-size: 0.9rem; width: 90px;
+    font-variant-numeric: tabular-nums; outline: none;
+  }
+  .config-item input:focus { border-color: var(--gold); }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .section-title {
+    padding: 12px 20px;
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title .accent-gold   { color: var(--gold); }
+  .section-title .accent-silver { color: var(--silver); }
+  .section-title .accent-oil    { color: var(--oil); }
+  .section-title .tag { font-size: 0.62rem; padding: 2px 8px; border-radius: 10px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); margin-left: auto; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 14px; text-align: right;
+    font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+    color: #fff; background: var(--header);
+    border-bottom: 1px solid var(--border);
+  }
+  th:first-child { text-align: left; }
+  td {
+    padding: 11px 14px; text-align: right;
+    font-size: 0.9rem; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--border);
+  }
+  td:first-child { text-align: left; font-size: 0.83rem; color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+
+  .val-gold  { color: var(--gold);   font-weight: 700; }
+  .val-silver{ color: var(--silver); font-weight: 700; }
+  .val-oil   { color: var(--oil);    font-weight: 700; }
+  .val-blue  { color: var(--blue);   font-weight: 700; }
+
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  .opp-chip { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.5px; }
+  .opp-chip.yes { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid var(--green); }
+  .opp-chip.no  { background: rgba(107,114,128,0.1); color: var(--muted); border: 1px solid var(--border); }
+  .live-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; margin-left: 5px; background: rgba(34,197,94,0.18); color: var(--green); border: 1px solid var(--green); }
+
+  .footer { padding: 8px 24px; font-size: 0.7rem; color: var(--muted); border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 20px; flex-wrap: wrap; }
+
+  @media(max-width: 900px) {
+    .ticker-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">AUREM <span>MAIN</span></div>
+  <div class="header-meta">
+    <a class="nav-link" href="/">Rates</a>
+    <a class="nav-link" href="/arb">Detailed Arb</a>
+    <div class="pill off" id="statusPill">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusLabel">Connecting...</span>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- Live spot ticker bar -->
+<div class="ticker-bar">
+  <div class="ticker gold" id="tk-gold">
+    <div class="ticker-label">Gold ($ / troy oz)</div>
+    <div class="ticker-val" id="tk-gold-val">—</div>
+    <div class="ticker-sub" id="tk-gold-sub">— · —</div>
+  </div>
+  <div class="ticker silver" id="tk-silver">
+    <div class="ticker-label">Silver ($ / troy oz)</div>
+    <div class="ticker-val" id="tk-silver-val">—</div>
+    <div class="ticker-sub" id="tk-silver-sub">— · —</div>
+  </div>
+  <div class="ticker oil" id="tk-oil">
+    <div class="ticker-label">Crude Oil (WTI / Brent $ / bbl)</div>
+    <div class="ticker-val" id="tk-oil-val">—</div>
+    <div class="ticker-sub" id="tk-oil-sub">Spread: —</div>
+  </div>
+  <div class="ticker fx" id="tk-fx">
+    <div class="ticker-label">USD / INR</div>
+    <div class="ticker-val" id="tk-fx-val">—</div>
+    <div class="ticker-sub" id="tk-fx-sub">Augmont Firebase</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Config bar -->
+  <div class="config-bar">
+    <div class="config-item">
+      <label>Import Duty %</label>
+      <input type="number" id="dutyPct" value="15.2" step="0.1" oninput="render()">
+    </div>
+    <div class="config-item">
+      <label>Purity Factor</label>
+      <input type="number" id="purity" value="0.999" step="0.001" oninput="render()">
+    </div>
+    <div class="config-item">
+      <label>Arb Threshold %</label>
+      <input type="number" id="arbThreshold" value="1.5" step="0.1" oninput="render()">
+    </div>
+    <div class="config-item" style="margin-left:auto;color:var(--muted);font-size:0.72rem" id="ratesSummary">—</div>
+  </div>
+
+  <!-- ─── Gold Arbitrage ─── -->
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-gold">■</span> Gold — MCX vs COMEX Arbitrage
+      <span class="tag" id="gold-tag">Near-term contracts · TradingView Live</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>MCX Contract</th>
+          <th>Maturity</th>
+          <th>MCX ₹/10g</th>
+          <th>COMEX Contract</th>
+          <th>COMEX $/oz</th>
+          <th>Implied ₹/10g (+duty)</th>
+          <th>Spread ₹/10g</th>
+          <th>Ann. %</th>
+          <th>Opportunity</th>
+        </tr>
+      </thead>
+      <tbody id="gold-tbody">
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Loading gold contracts…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Silver Arbitrage ─── -->
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-silver">■</span> Silver — MCX vs COMEX Arbitrage
+      <span class="tag" id="silver-tag">Near-term contracts · TradingView Live</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>MCX Contract</th>
+          <th>Maturity</th>
+          <th>MCX ₹/kg</th>
+          <th>COMEX Contract</th>
+          <th>COMEX $/oz</th>
+          <th>Implied ₹/kg (+duty)</th>
+          <th>Spread ₹/kg</th>
+          <th>Ann. %</th>
+          <th>Opportunity</th>
+        </tr>
+      </thead>
+      <tbody id="silver-tbody">
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Loading silver contracts…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Oil Arbitrage ─── -->
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-oil">■</span> Crude Oil — Brent vs WTI Spread
+      <span class="tag" id="oil-tag">Near-term contracts · TradingView Live</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>WTI Contract</th>
+          <th>Maturity</th>
+          <th>WTI $/bbl</th>
+          <th>Brent Contract</th>
+          <th>Brent $/bbl</th>
+          <th>Spread $/bbl</th>
+          <th>Spread %</th>
+          <th>Ann. %</th>
+          <th>Opportunity</th>
+        </tr>
+      </thead>
+      <tbody id="oil-tbody">
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Loading oil contracts…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>Spot: <b id="spot-update">—</b></span>
+  <span>Futures: <b id="fut-update">—</b></span>
+  <span>Augmont: <b id="aug-update">—</b></span>
+</div>
+
+<script>
+const S = {
+  aug: {}, tv: {}, tvspot: {},
+  xauBid: null, xauAsk: null,
+  xagBid: null, xagAsk: null,
+  wtiBid: null, wtiAsk: null,
+  brentBid: null, brentAsk: null,
+  usdinr: null,
+};
+
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST';
+}, 1000);
+
+const INR = v => v != null && !isNaN(v) ? '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
+const USD = v => v != null && !isNaN(v) ? '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '—';
+
+function parseExp(exp) {
+  if (!exp) return null;
+  const s = String(exp);
+  if (s.length !== 8) return null;
+  return new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8));
+}
+function fmtExp(exp) {
+  const d = parseExp(exp);
+  return d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
+}
+function daysTo(exp) {
+  const d = parseExp(exp);
+  if (!d) return null;
+  const diff = Math.round((d - new Date()) / 86400e3);
+  return diff > 0 ? diff : null;
+}
+function annualize(prem, base, days) {
+  if (base == null || !days || days <= 0) return null;
+  return (prem / base) * (365 / days) * 100;
+}
+function fmtPct(v) {
+  if (v == null || isNaN(v)) return '—';
+  const cls = v >= 0 ? 'pos' : 'neg';
+  return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+}
+function fmtDelta(v, currency = 'inr') {
+  if (v == null || isNaN(v)) return '—';
+  const cls = v >= 0 ? 'pos' : 'neg';
+  const s = currency === 'usd' ? '$' + Math.abs(v).toFixed(3) : INR(Math.abs(v));
+  return `<span class="${cls}">${v >= 0 ? '+' : '−'}${s}</span>`;
+}
+function flashOnChange(elId, oldVal, newVal) {
+  if (oldVal == null || newVal == null || oldVal === newVal) return;
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.classList.remove('tick-flash', 'tick-flash-dn');
+  void el.offsetWidth;
+  el.classList.add(newVal > oldVal ? 'tick-flash' : 'tick-flash-dn');
+}
+
+function render() {
+  const aug = S.aug;
+  const dutyPct = parseFloat(document.getElementById('dutyPct').value) || 0;
+  const purity  = parseFloat(document.getElementById('purity').value) || 1;
+  const arbThreshold = parseFloat(document.getElementById('arbThreshold').value) || 1.5;
+  const usdinr = S.usdinr ?? aug['USDINR']?.buy ?? null;
+
+  // ── Ticker bar (top spot values) ──────────────────────
+  document.getElementById('tk-gold-val').textContent   = USD(S.xauAsk);
+  document.getElementById('tk-gold-sub').textContent   = S.xauBid && S.xauAsk ? `bid ${USD(S.xauBid)} · ask ${USD(S.xauAsk)}` : '—';
+  document.getElementById('tk-silver-val').textContent = USD(S.xagAsk);
+  document.getElementById('tk-silver-sub').textContent = S.xagBid && S.xagAsk ? `bid ${USD(S.xagBid)} · ask ${USD(S.xagAsk)}` : '—';
+  const wti = S.wtiAsk, brent = S.brentAsk;
+  document.getElementById('tk-oil-val').textContent    = wti != null && brent != null ? `${USD(wti)} / ${USD(brent)}` : '—';
+  document.getElementById('tk-oil-sub').textContent    = wti != null && brent != null ? `Spread: ${(brent - wti >= 0 ? '+' : '')}${'$' + (brent - wti).toFixed(3)}/bbl · ${((brent - wti) / wti * 100).toFixed(2)}%` : 'Spread: —';
+  document.getElementById('tk-fx-val').textContent     = usdinr != null ? '₹' + Number(usdinr).toFixed(4) : '—';
+
+  document.getElementById('ratesSummary').innerHTML = `USD/INR ${usdinr ? Number(usdinr).toFixed(4) : '—'} · Duty ${dutyPct}% · Purity ${purity}`;
+
+  // ── Filter contracts to near-term (< 180 days) ────────
+  const tv = S.tv;
+  const nowMs = Date.now();
+  const cutoff = nowMs + 180 * 86400e3;
+  const filterBy = (metal, prefix) => Object.values(tv).filter(c => {
+    if (!c || c.close == null || c.metal !== metal) return false;
+    const d = parseExp(c.expiration);
+    if (!d) return false;
+    if (d.getTime() < nowMs || d.getTime() > cutoff) return false;
+    return c.symbol.startsWith(prefix);
+  }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
+
+  const goldMcx    = filterBy('gold', 'MCX:');
+  const goldComex  = filterBy('gold', 'COMEX:');
+  const silvMcx    = filterBy('silver', 'MCX:');
+  const silvComex  = filterBy('silver', 'COMEX:');
+  const wtiF       = filterBy('oil', 'NYMEX:');
+  const brentF     = filterBy('oil', 'ICEEUR:');
+
+  // ── Render gold arb table ─────────────────────────────
+  renderArbTable('gold-tbody', goldMcx, goldComex, {
+    unit: '/10g', gramMultiplier: 10, purity, dutyPct, usdinr, threshold: arbThreshold,
+    priceCls: 'val-gold',
+  });
+
+  // ── Render silver arb table ───────────────────────────
+  renderArbTable('silver-tbody', silvMcx, silvComex, {
+    unit: '/kg', gramMultiplier: 1000, purity: 0.999, dutyPct, usdinr, threshold: arbThreshold,
+    priceCls: 'val-silver',
+  });
+
+  // ── Render oil arb table ──────────────────────────────
+  renderOilArb('oil-tbody', wtiF, brentF, arbThreshold);
+}
+
+function renderArbTable(tbodyId, mcxRows, comexRows, opts) {
+  const { gramMultiplier, purity, dutyPct, usdinr, threshold, priceCls, unit } = opts;
+  if (!mcxRows.length || !comexRows.length || usdinr == null) {
+    document.getElementById(tbodyId).innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
+    return;
+  }
+  const rows = mcxRows.map(m => {
+    const mDate = parseExp(m.expiration);
+    if (!mDate) return '';
+    let best = null, bestDelta = Infinity;
+    comexRows.forEach(c => {
+      const cDate = parseExp(c.expiration);
+      if (!cDate) return;
+      const d = Math.abs(cDate - mDate);
+      if (d < bestDelta) { bestDelta = d; best = c; }
+    });
+    if (!best) return '';
+    const impliedINR = (best.close * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100);
+    const spread = m.close - impliedINR;
+    const days = daysTo(m.expiration);
+    const annSpread = annualize(spread, impliedINR, days);
+    const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
+    const chip = isOpp
+      ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
+      : `<span class="opp-chip no">—</span>`;
+    const rowStyle = isOpp ? ` style="background:${annSpread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+    const liveBadge = (m.live || best.live) ? '<span class="live-badge">LIVE</span>' : '';
+    return `<tr${rowStyle}>
+      <td>${m.description.split(' Futures')[0].trim()}${liveBadge}</td>
+      <td>${fmtExp(m.expiration)}</td>
+      <td class="${priceCls}">${INR(m.close)}</td>
+      <td style="color:var(--muted);font-size:0.78rem">${best.description.split(' Futures')[0].trim()}</td>
+      <td class="val-blue">${USD(best.close)}</td>
+      <td>${INR(impliedINR)}</td>
+      <td>${fmtDelta(spread)}</td>
+      <td>${fmtPct(annSpread)}</td>
+      <td>${chip}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById(tbodyId).innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No matching contracts</td></tr>`;
+}
+
+function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
+  if (!wtiRows.length || !brentRows.length) {
+    document.getElementById(tbodyId).innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
+    return;
+  }
+  const rows = wtiRows.map(m => {
+    const mDate = parseExp(m.expiration);
+    if (!mDate) return '';
+    let best = null, bestDelta = Infinity;
+    brentRows.forEach(c => {
+      const cDate = parseExp(c.expiration);
+      if (!cDate) return;
+      const d = Math.abs(cDate - mDate);
+      if (d < bestDelta) { bestDelta = d; best = c; }
+    });
+    if (!best) return '';
+    const spread = best.close - m.close;
+    const spreadPct = (spread / m.close) * 100;
+    const days = daysTo(m.expiration);
+    const annSpread = annualize(spread, m.close, days);
+    const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
+    const chip = isOpp
+      ? `<span class="opp-chip yes">${spread > 0 ? '↑ BRENT PREM' : '↓ WTI PREM'}</span>`
+      : `<span class="opp-chip no">—</span>`;
+    const rowStyle = isOpp ? ` style="background:${spread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+    const liveBadge = (m.live || best.live) ? '<span class="live-badge">LIVE</span>' : '';
+    return `<tr${rowStyle}>
+      <td>${m.description.split(' Futures')[0].trim()}${liveBadge}</td>
+      <td>${fmtExp(m.expiration)}</td>
+      <td class="val-oil">${USD(m.close)}</td>
+      <td style="color:var(--muted);font-size:0.78rem">${best.description.split(' Futures')[0].trim()}</td>
+      <td class="val-blue">${USD(best.close)}</td>
+      <td>${fmtDelta(spread, 'usd')}</td>
+      <td>${fmtPct(spreadPct)}</td>
+      <td>${fmtPct(annSpread)}</td>
+      <td>${chip}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById(tbodyId).innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No matching contracts</td></tr>`;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+let ws, wsTimer;
+function connectWS() {
+  clearTimeout(wsTimer);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host  = location.host || 'localhost:3001';
+  const wsURL = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${host}/ws`;
+  ws = new WebSocket(wsURL);
+
+  ws.onopen = () => setStatus(true, 'Live · TradingView + Augmont');
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type !== 'rates') return;
+      if (msg.source === 'augmont') {
+        S.aug = msg.prices;
+        document.getElementById('aug-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      } else if (msg.source === 'tvspot') {
+        const prev = { xau: S.xauAsk, xag: S.xagAsk, wti: S.wtiAsk, brent: S.brentAsk, fx: S.usdinr };
+        S.tvspot   = msg.prices;
+        S.xauBid   = msg.prices.XAUUSD?.bid; S.xauAsk = msg.prices.XAUUSD?.ask;
+        S.xagBid   = msg.prices.XAGUSD?.bid; S.xagAsk = msg.prices.XAGUSD?.ask;
+        S.wtiBid   = msg.prices.WTI?.bid;    S.wtiAsk = msg.prices.WTI?.ask;
+        S.brentBid = msg.prices.BRENT?.bid;  S.brentAsk = msg.prices.BRENT?.ask;
+        S.usdinr   = msg.prices.USDINR?.ask ?? msg.prices.USDINR?.close;
+        document.getElementById('spot-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+        flashOnChange('tk-gold-val',   prev.xau,   S.xauAsk);
+        flashOnChange('tk-silver-val', prev.xag,   S.xagAsk);
+        flashOnChange('tk-oil-val',    prev.wti,   S.wtiAsk);
+        flashOnChange('tk-fx-val',     prev.fx,    S.usdinr);
+      } else if (msg.source === 'tradingview') {
+        S.tv = msg.prices;
+        document.getElementById('fut-update').textContent =
+          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      }
+      render();
+    } catch(err) { console.error(err); }
+  };
+  ws.onerror = () => {};
+  ws.onclose = () => {
+    setStatus(false, 'Proxy offline — retrying…');
+    wsTimer = setTimeout(connectWS, 5000);
+  };
+}
+function setStatus(live, label) {
+  const pill = document.getElementById('statusPill');
+  const dot  = document.getElementById('statusDot');
+  pill.className = 'pill ' + (live ? 'live' : 'off');
+  dot.className  = 'dot '  + (live ? 'pulse' : '');
+  document.getElementById('statusLabel').textContent = label;
+}
+
+connectWS();
+// Force re-render every second so timestamps and calculations stay fresh
+setInterval(render, 1000);
+</script>
+</body>
+</html>
