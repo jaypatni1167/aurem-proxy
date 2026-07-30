@@ -261,64 +261,85 @@ async function fetchArihant() {
 fetchArihant();
 setInterval(fetchArihant, 5000);
 
-// ── Spot poller — Kitco/goldprice.org for XAU/XAG + Augmont USDINR ─
-async function fetchTvSpot() {
-  try {
-    // Add cache-buster to avoid CDN staleness
-    const buster = Date.now();
-    const data = await new Promise((resolve, reject) => {
-      const https = require('https');
-      const req = https.request({
-        hostname: 'data-asg.goldprice.org',
-        path: '/dbXRates/USD?t=' + buster,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-          'Referer': 'https://goldprice.org/',
-          'Origin':  'https://goldprice.org',
-          'Accept':  'application/json, text/plain, */*',
-        }
-      }, (r) => {
-        let s = '';
-        r.on('data', c => s += c);
-        r.on('end', () => resolve(s));
-      });
-      req.on('error', reject);
-      req.end();
-    });
-    const parsed = JSON.parse(data);
-    const item = (parsed.items || [])[0];
-    if (!item) throw new Error('no item in response');
+// ── TradingView WebSocket — TRUE real-time XAU/XAG/USDINR ─────
+// Reverse-engineered from tradingview.com's own live chart feed.
+const WebSocketClient = require('ws');
 
-    const prices = {
-      XAUUSD: {
-        symbol: 'XAUUSD',
-        close: item.xauPrice, bid: item.xauPrice, ask: item.xauPrice,
-        change: item.chgXau,
-      },
-      XAGUSD: {
-        symbol: 'XAGUSD',
-        close: item.xagPrice, bid: item.xagPrice, ask: item.xagPrice,
-        change: item.chgXag,
-      },
-    };
-    // USDINR from Augmont (already live via Firebase)
-    const augUsd = latestRates.augmont?.prices?.USDINR;
-    if (augUsd) {
-      prices.USDINR = {
-        symbol: 'USDINR',
-        close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell,
-        change: 0,
-      };
-    }
-    latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
-    broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
-  } catch (e) {
-    console.error('[Spot] Error:', e.message);
-  }
+const spotSymbols = { 'OANDA:XAUUSD': 'XAUUSD', 'TVC:SILVER': 'XAGUSD', 'FX_IDC:USDINR': 'USDINR' };
+const spotState = {}; // keyed by short symbol
+let tvWs = null;
+let tvReconnectTimer = null;
+let tvLastBroadcast = 0;
+
+function packTv(msg) {
+  const s = JSON.stringify(msg);
+  return `~m~${s.length}~m~${s}`;
 }
-fetchTvSpot();
-setInterval(fetchTvSpot, 1000);
+function packRaw(str) { return `~m~${str.length}~m~${str}`; }
+
+function connectTvWs() {
+  clearTimeout(tvReconnectTimer);
+  const session = 'qs_' + Math.random().toString(36).slice(2, 14);
+  tvWs = new WebSocketClient('wss://data.tradingview.com/socket.io/websocket', {
+    headers: {
+      'Origin': 'https://data.tradingview.com',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    }
+  });
+
+  tvWs.on('open', () => {
+    console.log('[TV-WS] Connected');
+    tvWs.send(packTv({ m: 'set_auth_token', p: ['unauthorized_user_token'] }));
+    tvWs.send(packTv({ m: 'quote_create_session', p: [session] }));
+    tvWs.send(packTv({ m: 'quote_set_fields', p: [session, 'lp', 'bid', 'ask', 'ch', 'chp'] }));
+    tvWs.send(packTv({ m: 'quote_add_symbols', p: [session, ...Object.keys(spotSymbols)] }));
+  });
+
+  tvWs.on('message', (raw) => {
+    const str = raw.toString();
+    const chunks = str.split(/~m~\d+~m~/).filter(Boolean);
+    for (const c of chunks) {
+      if (c.startsWith('~h~')) {
+        // Heartbeat — echo back so TV keeps the session alive
+        tvWs.send(packRaw(c));
+        continue;
+      }
+      try {
+        const msg = JSON.parse(c);
+        if (msg.m === 'qsd' && msg.p && msg.p[1]) {
+          const data = msg.p[1];
+          const key = spotSymbols[data.n];
+          if (!key || !data.v) continue;
+          const cur = spotState[key] || { symbol: key, bid: null, ask: null, close: null, change: 0 };
+          if (data.v.bid  != null) cur.bid   = data.v.bid;
+          if (data.v.ask  != null) cur.ask   = data.v.ask;
+          if (data.v.lp   != null) cur.close = data.v.lp;
+          if (data.v.ch   != null) cur.change = data.v.ch;
+          spotState[key] = cur;
+        }
+      } catch(e) {}
+    }
+    // Throttle broadcasts to max 4/sec (still visibly real-time, avoids WS spam)
+    if (Date.now() - tvLastBroadcast > 250) {
+      tvLastBroadcast = Date.now();
+      const prices = { ...spotState };
+      const augUsd = latestRates.augmont?.prices?.USDINR;
+      if (augUsd) {
+        // Augmont USD/INR is Firebase-live and India-specific; prefer it
+        prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
+      }
+      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
+      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+    }
+  });
+
+  tvWs.on('error', (e) => console.error('[TV-WS] Error:', e.message));
+  tvWs.on('close', () => {
+    console.log('[TV-WS] Disconnected, reconnecting in 5s...');
+    tvReconnectTimer = setTimeout(connectTvWs, 5000);
+  });
+}
+connectTvWs();
 
 // ── TradingView futures poller (MCX + COMEX gold + silver) ────
 let tvLastLog = 0;
