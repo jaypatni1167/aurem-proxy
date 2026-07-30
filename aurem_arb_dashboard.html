@@ -464,8 +464,8 @@ function render() {
   const tv = S.tv;
   const mcxRows = [];
   const comexRows = [];
-  const now = Date.now();
-  const cutoff = now + 180 * 86400e3;
+  const nowMs = Date.now();
+  const cutoff = nowMs + 180 * 86400e3;
 
   Object.values(tv).forEach(c => {
     if (!c || c.close == null) return;
@@ -473,8 +473,8 @@ function render() {
     // Skip contracts with no expiration OR expiring > 180 days out
     const d = parseExp(c.expiration);
     if (!d) return;
-    if (d.getTime() < now) return;    // already expired
-    if (d.getTime() > cutoff) return; // too far out — clutter
+    if (d.getTime() < nowMs) return;   // already expired
+    if (d.getTime() > cutoff) return;  // too far out — clutter
     if (c.symbol.startsWith('MCX:')) mcxRows.push(c);
     if (c.symbol.startsWith('COMEX:')) comexRows.push(c);
   });
