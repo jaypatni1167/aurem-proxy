@@ -127,6 +127,20 @@
   .opp-chip.no  { background: rgba(107,114,128,0.1); color: var(--muted); border: 1px solid var(--border); }
   .live-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; margin-left: 5px; background: rgba(34,197,94,0.18); color: var(--green); border: 1px solid var(--green); }
 
+  /* Selector row inside a section */
+  .selector-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    padding: 16px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  .selector-item { display: flex; flex-direction: column; gap: 6px; }
+  .selector-item label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .selector-item select {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 9px 12px; color: var(--text); font-size: 0.9rem;
+    font-family: inherit; cursor: pointer; outline: none;
+  }
+  .selector-item select:focus { border-color: var(--gold); }
+
   .footer { padding: 8px 24px; font-size: 0.7rem; color: var(--muted); border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 20px; flex-wrap: wrap; }
 
   @media(max-width: 900px) {
@@ -193,23 +207,33 @@
     <div class="config-item" style="margin-left:auto;color:var(--muted);font-size:0.72rem" id="ratesSummary">—</div>
   </div>
 
-  <!-- ─── Gold Arbitrage ─── -->
+  <!-- ─── Gold Arbitrage — Interactive Selector ─── -->
   <div class="section">
     <div class="section-title">
       <span class="accent-gold">■</span> Gold — MCX vs COMEX Arbitrage
-      <span class="tag" id="gold-tag">Near-term contracts · TradingView Live</span>
+      <span class="tag">Select any two contracts to compare</span>
+    </div>
+    <div class="selector-row">
+      <div class="selector-item">
+        <label>MCX Contract</label>
+        <select id="gold-mcx-sel" onchange="onSelChange('gold')"></select>
+      </div>
+      <div class="selector-item">
+        <label>COMEX Contract</label>
+        <select id="gold-comex-sel" onchange="onSelChange('gold')"></select>
+      </div>
     </div>
     <table>
       <thead>
         <tr>
-          <th>MCX Contract</th>
-          <th>Maturity</th>
           <th>MCX ₹/10g</th>
-          <th>COMEX Contract</th>
+          <th>Maturity</th>
           <th>COMEX $/oz</th>
+          <th>Maturity</th>
           <th>Implied ₹/10g (+duty)</th>
           <th>Spread ₹/10g</th>
           <th>Ann. %</th>
+          <th>Days Left</th>
           <th>Opportunity</th>
         </tr>
       </thead>
@@ -219,23 +243,33 @@
     </table>
   </div>
 
-  <!-- ─── Silver Arbitrage ─── -->
+  <!-- ─── Silver Arbitrage — Interactive Selector ─── -->
   <div class="section">
     <div class="section-title">
       <span class="accent-silver">■</span> Silver — MCX vs COMEX Arbitrage
-      <span class="tag" id="silver-tag">Near-term contracts · TradingView Live</span>
+      <span class="tag">Select any two contracts to compare</span>
+    </div>
+    <div class="selector-row">
+      <div class="selector-item">
+        <label>MCX Contract</label>
+        <select id="silver-mcx-sel" onchange="onSelChange('silver')"></select>
+      </div>
+      <div class="selector-item">
+        <label>COMEX Contract</label>
+        <select id="silver-comex-sel" onchange="onSelChange('silver')"></select>
+      </div>
     </div>
     <table>
       <thead>
         <tr>
-          <th>MCX Contract</th>
-          <th>Maturity</th>
           <th>MCX ₹/kg</th>
-          <th>COMEX Contract</th>
+          <th>Maturity</th>
           <th>COMEX $/oz</th>
+          <th>Maturity</th>
           <th>Implied ₹/kg (+duty)</th>
           <th>Spread ₹/kg</th>
           <th>Ann. %</th>
+          <th>Days Left</th>
           <th>Opportunity</th>
         </tr>
       </thead>
@@ -287,7 +321,20 @@ const S = {
   wtiBid: null, wtiAsk: null,
   brentBid: null, brentAsk: null,
   usdinr: null,
+  // User's selected contracts (symbol keys, e.g. "MCX:GOLD1!")
+  sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null },
 };
+
+function onSelChange(metal) {
+  if (metal === 'gold') {
+    S.sel.goldMcx   = document.getElementById('gold-mcx-sel').value;
+    S.sel.goldComex = document.getElementById('gold-comex-sel').value;
+  } else if (metal === 'silver') {
+    S.sel.silverMcx   = document.getElementById('silver-mcx-sel').value;
+    S.sel.silverComex = document.getElementById('silver-comex-sel').value;
+  }
+  render();
+}
 
 setInterval(() => {
   document.getElementById('clock').textContent =
@@ -375,62 +422,92 @@ function render() {
   const wtiF       = filterBy('oil', 'NYMEX:');
   const brentF     = filterBy('oil', 'ICEEUR:');
 
-  // ── Render gold arb table ─────────────────────────────
-  renderArbTable('gold-tbody', goldMcx, goldComex, {
-    unit: '/10g', gramMultiplier: 10, purity, dutyPct, usdinr, threshold: arbThreshold,
-    priceCls: 'val-gold',
+  // ── Render gold arb selector + comparison ─────────────
+  renderSelectorArb('gold', goldMcx, goldComex, {
+    gramMultiplier: 10, purity, dutyPct, usdinr, threshold: arbThreshold,
+    priceCls: 'val-gold', selMcxKey: 'goldMcx', selComexKey: 'goldComex',
   });
-
-  // ── Render silver arb table ───────────────────────────
-  renderArbTable('silver-tbody', silvMcx, silvComex, {
-    unit: '/kg', gramMultiplier: 1000, purity: 0.999, dutyPct, usdinr, threshold: arbThreshold,
-    priceCls: 'val-silver',
+  // ── Render silver arb selector + comparison ───────────
+  renderSelectorArb('silver', silvMcx, silvComex, {
+    gramMultiplier: 1000, purity: 0.999, dutyPct, usdinr, threshold: arbThreshold,
+    priceCls: 'val-silver', selMcxKey: 'silverMcx', selComexKey: 'silverComex',
   });
 
   // ── Render oil arb table ──────────────────────────────
   renderOilArb('oil-tbody', wtiF, brentF, arbThreshold);
 }
 
-function renderArbTable(tbodyId, mcxRows, comexRows, opts) {
-  const { gramMultiplier, purity, dutyPct, usdinr, threshold, priceCls, unit } = opts;
-  if (!mcxRows.length || !comexRows.length || usdinr == null) {
-    document.getElementById(tbodyId).innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
+function populateSelector(selectId, rows, currentValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  if (!rows.length) {
+    sel.innerHTML = '<option>Waiting for data…</option>';
     return;
   }
-  const rows = mcxRows.map(m => {
-    const mDate = parseExp(m.expiration);
-    if (!mDate) return '';
-    let best = null, bestDelta = Infinity;
-    comexRows.forEach(c => {
-      const cDate = parseExp(c.expiration);
-      if (!cDate) return;
-      const d = Math.abs(cDate - mDate);
-      if (d < bestDelta) { bestDelta = d; best = c; }
-    });
-    if (!best) return '';
-    const impliedINR = (best.close * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100);
-    const spread = m.close - impliedINR;
-    const days = daysTo(m.expiration);
-    const annSpread = annualize(spread, impliedINR, days);
-    const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
-    const chip = isOpp
-      ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
-      : `<span class="opp-chip no">—</span>`;
-    const rowStyle = isOpp ? ` style="background:${annSpread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
-    const liveBadge = (m.live || best.live) ? '<span class="live-badge">LIVE</span>' : '';
-    return `<tr${rowStyle}>
-      <td>${m.description.split(' Futures')[0].trim()}${liveBadge}</td>
-      <td>${fmtExp(m.expiration)}</td>
-      <td class="${priceCls}">${INR(m.close)}</td>
-      <td style="color:var(--muted);font-size:0.78rem">${best.description.split(' Futures')[0].trim()}</td>
-      <td class="val-blue">${USD(best.close)}</td>
-      <td>${INR(impliedINR)}</td>
-      <td>${fmtDelta(spread)}</td>
-      <td>${fmtPct(annSpread)}</td>
-      <td>${chip}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById(tbodyId).innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No matching contracts</td></tr>`;
+  // Only rebuild if list changed
+  const signature = rows.map(r => r.symbol).join(',');
+  if (sel.dataset.sig === signature) return; // no change → preserve selection
+  sel.dataset.sig = signature;
+  sel.innerHTML = rows.map(r =>
+    `<option value="${r.symbol}">${r.description} · ${fmtExp(r.expiration)}</option>`
+  ).join('');
+  // Restore previous selection, otherwise pick the front-month (first row)
+  if (currentValue && rows.some(r => r.symbol === currentValue)) {
+    sel.value = currentValue;
+  } else {
+    sel.value = rows[0].symbol;
+  }
+}
+
+function renderSelectorArb(metal, mcxRows, comexRows, opts) {
+  const { gramMultiplier, purity, dutyPct, usdinr, threshold, priceCls, selMcxKey, selComexKey } = opts;
+  const tbody = document.getElementById(metal + '-tbody');
+
+  // Populate the two dropdowns
+  populateSelector(metal + '-mcx-sel',   mcxRows,   S.sel[selMcxKey]);
+  populateSelector(metal + '-comex-sel', comexRows, S.sel[selComexKey]);
+
+  // Sync state with current dropdown values (in case they were auto-defaulted above)
+  const mcxSel = document.getElementById(metal + '-mcx-sel');
+  const comexSel = document.getElementById(metal + '-comex-sel');
+  if (mcxSel && mcxSel.value)   S.sel[selMcxKey]   = mcxSel.value;
+  if (comexSel && comexSel.value) S.sel[selComexKey] = comexSel.value;
+
+  if (!mcxRows.length || !comexRows.length || usdinr == null) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
+    return;
+  }
+
+  const m = mcxRows.find(r => r.symbol === S.sel[selMcxKey]);
+  const c = comexRows.find(r => r.symbol === S.sel[selComexKey]);
+  if (!m || !c) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Select both contracts…</td></tr>`;
+    return;
+  }
+
+  const impliedINR = (c.close * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100);
+  const spread = m.close - impliedINR;
+  const days = daysTo(m.expiration);
+  const annSpread = annualize(spread, impliedINR, days);
+  const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
+  const chip = isOpp
+    ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
+    : `<span class="opp-chip no">—</span>`;
+  const rowStyle = isOpp ? ` style="background:${annSpread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+  const liveBadgeM = m.live ? '<span class="live-badge">LIVE</span>' : '';
+  const liveBadgeC = c.live ? '<span class="live-badge">LIVE</span>' : '';
+
+  tbody.innerHTML = `<tr${rowStyle}>
+    <td class="${priceCls}">${INR(m.close)}${liveBadgeM}</td>
+    <td>${fmtExp(m.expiration)}</td>
+    <td class="val-blue">${USD(c.close)}${liveBadgeC}</td>
+    <td>${fmtExp(c.expiration)}</td>
+    <td>${INR(impliedINR)}</td>
+    <td>${fmtDelta(spread)}</td>
+    <td>${fmtPct(annSpread)}</td>
+    <td>${days ?? '—'}</td>
+    <td>${chip}</td>
+  </tr>`;
 }
 
 function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
