@@ -607,7 +607,11 @@ function setStatus(live, label) {
 
 connectWS();
 // Force re-render every second so timestamps and calculations stay fresh
-setInterval(render, 1000);
+// Wrap in try/catch so an error in one render doesn't kill the interval
+setInterval(() => {
+  try { render(); }
+  catch (e) { console.error('[render] error:', e.message); }
+}, 1000);
 </script>
 </body>
 </html>
