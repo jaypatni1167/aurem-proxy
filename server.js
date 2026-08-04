@@ -311,6 +311,52 @@ async function fetchTvSpotHttp() {
 fetchTvSpotHttp();
 setInterval(fetchTvSpotHttp, 2000);
 
+// ── goldprice.org spot poller — refreshes every 1s, faster tick cadence for XAU/XAG ──
+async function fetchGoldPrice() {
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const https = require('https');
+      const req = https.request({
+        hostname: 'data-asg.goldprice.org', path: '/dbXRates/USD?t=' + Date.now(), method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+          'Referer': 'https://goldprice.org/', 'Origin': 'https://goldprice.org',
+          'Accept': 'application/json',
+        }
+      }, (r) => { let s=''; r.on('data', c=>s+=c); r.on('end', ()=>resolve(s)); });
+      req.on('error', reject); req.end();
+    });
+    const parsed = JSON.parse(data);
+    const item = (parsed.items || [])[0];
+    if (!item) return;
+
+    // Only override if WS hasn't fed these symbols in the last 10s
+    const now = Date.now();
+    const xauExisting = spotState['XAUUSD'];
+    const xagExisting = spotState['XAGUSD'];
+    const xauWsFresh = xauExisting && xauExisting._wsFresh && (now - (xauExisting._wsTs || 0) < 10000);
+    const xagWsFresh = xagExisting && xagExisting._wsFresh && (now - (xagExisting._wsTs || 0) < 10000);
+
+    if (!xauWsFresh) {
+      spotState['XAUUSD'] = { symbol: 'XAUUSD', close: item.xauPrice, bid: item.xauPrice, ask: item.xauPrice, change: item.chgXau };
+    }
+    if (!xagWsFresh) {
+      spotState['XAGUSD'] = { symbol: 'XAGUSD', close: item.xagPrice, bid: item.xagPrice, ask: item.xagPrice, change: item.chgXag };
+    }
+
+    // Broadcast
+    const prices = { ...spotState };
+    const augUsd = latestRates.augmont?.prices?.USDINR;
+    if (augUsd) prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
+    latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
+    broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+  } catch (e) {
+    // Silent - goldprice.org can rate-limit
+  }
+}
+fetchGoldPrice();
+setInterval(fetchGoldPrice, 1000);
+
 // ── TradingView WebSocket — TRUE real-time XAU/XAG/USDINR ─────
 // Reverse-engineered from tradingview.com's own live chart feed.
 const WebSocketClient = require('ws');
