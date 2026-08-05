@@ -613,7 +613,11 @@ connectTvWs();
 // ── TradingView futures poller (MCX + COMEX gold + silver) ────
 let tvLastLog = 0;
 
+// Track rate limit backoff — pause scanner when TV returns 429
+let tvRateLimitedUntil = 0;
+
 function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,description', op = 'match') {
+  if (Date.now() < tvRateLimitedUntil) return Promise.resolve('');
   const body = JSON.stringify({
     filter: [
       { left: field, operation: op, right: matchTerm },
@@ -633,6 +637,12 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
         'User-Agent': 'Mozilla/5.0',
       }
     }, (r) => {
+      if (r.statusCode === 429) {
+        // Rate limited — back off for 5 minutes
+        tvRateLimitedUntil = Date.now() + 5 * 60 * 1000;
+        console.warn('[TV-Scanner] 429 rate limited, backing off 5 min');
+        r.resume(); return resolve('');
+      }
       let data = '';
       r.on('data', c => data += c);
       r.on('end', () => resolve(data));
@@ -712,7 +722,7 @@ async function fetchTradingView() {
   }
 }
 fetchTradingView();
-setInterval(fetchTradingView, 3000);
+setInterval(fetchTradingView, 10000);  // 10s to stay under TV rate limit
 
 // Health check endpoint
 app.get('/health', (req, res) => res.json({ status: 'ok', augmont: !!latestRates.augmont, arihant: !!latestRates.arihant }));
