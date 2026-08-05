@@ -1,5 +1,6 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
+const WebSocketClient = require('ws');
 const fetch = require('node-fetch');
 const { initializeApp } = require('firebase/app');
 const { getAuth, signInWithCustomToken } = require('firebase/auth');
@@ -12,7 +13,7 @@ const app = express();
 app.use(require('cors')());
 app.use(express.json());
 
-// Find HTML dashboards — check same dir first (Render deploy), then parent dir (local dev)
+// Find HTML dashboards — check same dir first, then parent dir
 function findHtml(name) {
   const candidates = [path.join(__dirname, name), path.join(__dirname, '..', name)];
   for (const c of candidates) if (fs.existsSync(c)) return c;
@@ -277,7 +278,10 @@ async function fetchTvSpotHttp() {
       }, (r) => { let s = ''; r.on('data', c => s += c); r.on('end', () => resolve(s)); });
       req.on('error', reject); req.write(body); req.end();
     });
-    const parsed = JSON.parse(res);
+    // Silently skip empty responses (rate-limited by TV)
+    if (!res || !res.trim()) return;
+    let parsed;
+    try { parsed = JSON.parse(res); } catch { return; }
     const mapping = { 'OANDA:XAUUSD':'XAUUSD', 'TVC:SILVER':'XAGUSD', 'FX_IDC:USDINR':'USDINR', 'NYMEX:CL1!':'WTI', 'ICEEUR:BRN1!':'BRENT' };
     (parsed.data || []).forEach(row => {
       const [close, bid, ask, change] = row.d;
@@ -357,9 +361,79 @@ async function fetchGoldPrice() {
 fetchGoldPrice();
 setInterval(fetchGoldPrice, 1000);
 
+// ── investing.com WebSocket — real-time XAU/XAG/WTI/Brent (works from all networks) ─────
+const INVESTING_PIDS = {
+  '8830': 'XAUUSD',    // Gold spot
+  '8836': 'XAGUSD',    // Silver spot
+  '8849': 'WTI',       // WTI Crude
+  '8833': 'BRENT',     // Brent Crude
+};
+let invWs = null;
+let invReconnectTimer = null;
+let invMsgsReceived = 0;
+
+function connectInvestingWs() {
+  clearTimeout(invReconnectTimer);
+  const url = `wss://stream142.forexpros.com/echo/${Math.floor(Math.random() * 999)}/${Math.random().toString(36).slice(2, 10)}/websocket`;
+  console.log(`[Investing] Connecting to ${url}`);
+  invWs = new WebSocketClient(url, {
+    headers: { 'Origin': 'https://www.investing.com', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+    handshakeTimeout: 8000,
+  });
+
+  invWs.on('open', () => {
+    invMsgsReceived = 0;
+    console.log('[Investing] ✓ Connected');
+    const pidList = Object.keys(INVESTING_PIDS);
+    const sub = 'pid-' + pidList.join(':%%pid-') + ':';
+    invWs.send(JSON.stringify([JSON.stringify({_event: 'bulk-subscribe', tzID: 8, message: sub})]));
+  });
+
+  invWs.on('message', (raw) => {
+    invMsgsReceived++;
+    const str = raw.toString();
+    if (!str.startsWith('a')) return;
+    try {
+      const arr = JSON.parse(str.slice(1));
+      for (const s of arr) {
+        const obj = JSON.parse(s);
+        if (!obj.message || !obj.message.startsWith('pid-')) continue;
+        const colonIdx = obj.message.indexOf('::');
+        const pid = obj.message.slice(4, colonIdx);
+        const key = INVESTING_PIDS[pid];
+        if (!key) continue;
+        const data = JSON.parse(obj.message.slice(colonIdx + 2));
+        const bid = parseFloat(String(data.bid).replace(/,/g, ''));
+        const ask = parseFloat(String(data.ask).replace(/,/g, ''));
+        const last = data.last_numeric != null ? parseFloat(data.last_numeric) : parseFloat(String(data.last).replace(/,/g, ''));
+        spotState[key] = {
+          symbol: key,
+          close: isNaN(last) ? null : last,
+          bid: isNaN(bid) ? last : bid,
+          ask: isNaN(ask) ? last : ask,
+          change: parseFloat(data.pc || 0) || 0,
+          _wsFresh: true, _wsTs: Date.now(),
+        };
+      }
+      // Broadcast on every message (real-time)
+      const prices = { ...spotState };
+      const augUsd = latestRates.augmont?.prices?.USDINR;
+      if (augUsd) prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
+      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
+      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+    } catch (e) {}
+  });
+
+  invWs.on('error', (e) => console.error('[Investing] Error:', e.message));
+  invWs.on('close', (code) => {
+    console.log(`[Investing] Closed (code ${code}, msgs: ${invMsgsReceived})`);
+    invReconnectTimer = setTimeout(connectInvestingWs, 5000);
+  });
+}
+connectInvestingWs();
+
 // ── TradingView WebSocket — TRUE real-time XAU/XAG/USDINR ─────
 // Reverse-engineered from tradingview.com's own live chart feed.
-const WebSocketClient = require('ws');
 
 // Spot symbols
 const spotSymbols = {
@@ -382,6 +456,8 @@ const futuresSymbols = [
 ];
 const spotState = {}; // keyed by short symbol
 const futuresLiveState = {}; // keyed by full TV symbol e.g. 'MCX:GOLD1!'
+const subscribedTvSymbols = new Set();  // dynamic subscription tracker
+let tvSession = null;    // current TV WS session id (for late subscribe messages)
 let tvWs = null;
 let tvReconnectTimer = null;
 let tvLastBroadcast = 0;
@@ -401,9 +477,28 @@ const TV_WS_ENDPOINTS = [
 let tvEndpointIdx = 0;
 let tvMsgsReceived = 0;
 
+// Dynamically add symbols to the running TV WS subscription (called after scanner finds new contracts)
+function tvSubscribeMore(symbols) {
+  if (!tvWs || tvWs.readyState !== 1 || !tvSession) return;
+  const newSyms = symbols.filter(s => !subscribedTvSymbols.has(s));
+  if (!newSyms.length) return;
+  // TV allows ~100 symbols per session; cap our subscription
+  const budget = 200 - subscribedTvSymbols.size;
+  if (budget <= 0) return;
+  const toAdd = newSyms.slice(0, budget);
+  toAdd.forEach(s => subscribedTvSymbols.add(s));
+  try {
+    tvWs.send(packTv({ m: 'quote_add_symbols', p: [tvSession, ...toAdd] }));
+    console.log(`[TV-WS] Subscribed to ${toAdd.length} more (total ${subscribedTvSymbols.size})`);
+  } catch (e) {
+    console.error('[TV-WS] subscribe error:', e.message);
+  }
+}
+
 function connectTvWs() {
   clearTimeout(tvReconnectTimer);
-  const session = 'qs_' + Math.random().toString(36).slice(2, 14);
+  tvSession = 'qs_' + Math.random().toString(36).slice(2, 14);
+  const session = tvSession;
   const endpoint = TV_WS_ENDPOINTS[tvEndpointIdx];
   console.log(`[TV-WS] Trying ${endpoint.url}`);
   tvWs = new WebSocketClient(endpoint.url, {
@@ -420,7 +515,11 @@ function connectTvWs() {
     tvWs.send(packTv({ m: 'set_auth_token', p: ['unauthorized_user_token'] }));
     tvWs.send(packTv({ m: 'quote_create_session', p: [session] }));
     tvWs.send(packTv({ m: 'quote_set_fields', p: [session, 'lp', 'bid', 'ask', 'ch', 'chp'] }));
-    tvWs.send(packTv({ m: 'quote_add_symbols', p: [session, ...Object.keys(spotSymbols), ...futuresSymbols] }));
+    // Subscribe to initial symbols
+    subscribedTvSymbols.clear();
+    const initial = [...Object.keys(spotSymbols), ...futuresSymbols];
+    initial.forEach(s => subscribedTvSymbols.add(s));
+    tvWs.send(packTv({ m: 'quote_add_symbols', p: [session, ...initial] }));
   });
 
   tvWs.on('message', (raw) => {
@@ -449,8 +548,8 @@ function connectTvWs() {
             cur._wsFresh = true;    // mark as freshly updated by WS
             cur._wsTs = Date.now();
             spotState[shortKey] = cur;
-          } else if (futuresSymbols.includes(data.n)) {
-            // Futures — real-time updates
+          } else if (subscribedTvSymbols.has(data.n)) {
+            // Futures — real-time updates (from any subscribed contract)
             const cur = futuresLiveState[data.n] || { symbol: data.n, bid: null, ask: null, close: null, change: 0 };
             if (data.v.bid  != null) cur.bid   = data.v.bid;
             if (data.v.ask  != null) cur.ask   = data.v.ask;
@@ -527,11 +626,16 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
     const https = require('https');
     const req = https.request({
       hostname: 'scanner.tradingview.com',
-      path: '/futures/scan',
+      path: '/futures/scan?t=' + Date.now(),  // cache-buster
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Origin': 'https://www.tradingview.com',
+        'Referer': 'https://www.tradingview.com/',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
       }
     }, (r) => {
       let data = '';
@@ -551,9 +655,14 @@ async function fetchTradingView() {
       tvScan('SILVER'),
       tvScan('^(Crude Oil Futures|Brent Crude Futures)', ['NYMEX', 'ICEEUR'], 'description'),
     ]);
-    const gold   = JSON.parse(goldRaw);
-    const silver = JSON.parse(silverRaw);
-    const oil    = JSON.parse(oilRaw);
+    // Silently skip if TV rate-limited us and returned empty responses
+    const safeParse = (raw) => { try { return raw && raw.trim() ? JSON.parse(raw) : { data: [] }; } catch { return { data: [] }; } };
+    const gold   = safeParse(goldRaw);
+    const silver = safeParse(silverRaw);
+    const oil    = safeParse(oilRaw);
+    if (!(gold.data?.length || silver.data?.length || oil.data?.length)) {
+      return; // nothing to broadcast; skip this cycle silently
+    }
 
     const prices = {};
     const addRow = (row, metal) => {
@@ -578,6 +687,20 @@ async function fetchTradingView() {
     (silver.data || []).forEach(r => addRow(r, 'silver'));
     (oil.data    || []).forEach(r => addRow(r, 'oil'));
 
+    // Dynamically subscribe TV WS to any near-term contract we haven't seen
+    const nowMs = Date.now();
+    const cutoff = nowMs + 180 * 86400e3;
+    const nearTerm = Object.values(prices)
+      .filter(p => {
+        if (!p.expiration) return false;
+        const s = String(p.expiration);
+        if (s.length !== 8) return false;
+        const d = new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8));
+        return d.getTime() > nowMs && d.getTime() < cutoff;
+      })
+      .map(p => p.symbol);
+    if (nearTerm.length) tvSubscribeMore(nearTerm);
+
     const rates = { source: 'tradingview', timestamp: Date.now(), prices };
     latestRates.tradingview = rates;
     broadcast({ type: 'rates', ...rates });
@@ -594,7 +717,7 @@ async function fetchTradingView() {
   }
 }
 fetchTradingView();
-setInterval(fetchTradingView, 5000);
+setInterval(fetchTradingView, 3000);
 
 // Health check endpoint
 app.get('/health', (req, res) => res.json({ status: 'ok', augmont: !!latestRates.augmont, arihant: !!latestRates.arihant }));
