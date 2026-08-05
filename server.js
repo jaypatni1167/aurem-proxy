@@ -392,18 +392,31 @@ function packTv(msg) {
 }
 function packRaw(str) { return `~m~${str.length}~m~${str}`; }
 
+// Try multiple TV WebSocket endpoints — some are blocked in certain networks
+const TV_WS_ENDPOINTS = [
+  { url: 'wss://data.tradingview.com/socket.io/websocket', origin: 'https://data.tradingview.com' },
+  { url: 'wss://widgetdata.tradingview.com/socket.io/websocket', origin: 'https://widgetdata.tradingview.com' },
+  { url: 'wss://prodata.tradingview.com/socket.io/websocket', origin: 'https://prodata.tradingview.com' },
+];
+let tvEndpointIdx = 0;
+let tvMsgsReceived = 0;
+
 function connectTvWs() {
   clearTimeout(tvReconnectTimer);
   const session = 'qs_' + Math.random().toString(36).slice(2, 14);
-  tvWs = new WebSocketClient('wss://data.tradingview.com/socket.io/websocket', {
+  const endpoint = TV_WS_ENDPOINTS[tvEndpointIdx];
+  console.log(`[TV-WS] Trying ${endpoint.url}`);
+  tvWs = new WebSocketClient(endpoint.url, {
     headers: {
-      'Origin': 'https://data.tradingview.com',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-    }
+      'Origin': endpoint.origin,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    },
+    handshakeTimeout: 8000,
   });
 
   tvWs.on('open', () => {
-    console.log('[TV-WS] Connected');
+    console.log(`[TV-WS] ✓ Connected to ${endpoint.url}`);
+    tvMsgsReceived = 0;
     tvWs.send(packTv({ m: 'set_auth_token', p: ['unauthorized_user_token'] }));
     tvWs.send(packTv({ m: 'quote_create_session', p: [session] }));
     tvWs.send(packTv({ m: 'quote_set_fields', p: [session, 'lp', 'bid', 'ask', 'ch', 'chp'] }));
@@ -411,6 +424,7 @@ function connectTvWs() {
   });
 
   tvWs.on('message', (raw) => {
+    tvMsgsReceived++;
     const str = raw.toString();
     const chunks = str.split(/~m~\d+~m~/).filter(Boolean);
     for (const c of chunks) {
@@ -476,11 +490,24 @@ function connectTvWs() {
     }
   });
 
-  tvWs.on('error', (e) => console.error('[TV-WS] Error:', e.message));
-  tvWs.on('close', () => {
-    console.log('[TV-WS] Disconnected, reconnecting in 5s...');
+  tvWs.on('error', (e) => console.error(`[TV-WS] Error on ${endpoint.url}:`, e.message));
+  tvWs.on('close', (code) => {
+    console.log(`[TV-WS] Closed ${endpoint.url} (code ${code}, msgs received: ${tvMsgsReceived})`);
+    // If nothing came through, try the next endpoint
+    if (tvMsgsReceived < 3) {
+      tvEndpointIdx = (tvEndpointIdx + 1) % TV_WS_ENDPOINTS.length;
+      console.log(`[TV-WS] Switching to endpoint index ${tvEndpointIdx}`);
+    }
     tvReconnectTimer = setTimeout(connectTvWs, 5000);
   });
+
+  // Watchdog: if no messages arrive within 15s, force-close so we try the next endpoint
+  setTimeout(() => {
+    if (tvMsgsReceived === 0 && tvWs && tvWs.readyState === 1) {
+      console.log(`[TV-WS] Watchdog: no messages after 15s on ${endpoint.url}, closing`);
+      tvWs.close();
+    }
+  }, 15000);
 }
 connectTvWs();
 
