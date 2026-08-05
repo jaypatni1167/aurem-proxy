@@ -363,10 +363,10 @@ setInterval(fetchGoldPrice, 1000);
 
 // ── investing.com WebSocket — real-time XAU/XAG/WTI/Brent (works from all networks) ─────
 const INVESTING_PIDS = {
-  '8830': 'XAUUSD',    // Gold spot
-  '8836': 'XAGUSD',    // Silver spot
-  '8849': 'WTI',       // WTI Crude
-  '8833': 'BRENT',     // Brent Crude
+  '68':   'XAUUSD',    // Gold Spot XAU/USD
+  '69':   'XAGUSD',    // Silver Spot XAG/USD
+  '8849': 'WTI',       // WTI Crude Oil Futures (front, effectively spot)
+  '8833': 'BRENT',     // Brent Crude Oil Futures (front, effectively spot)
 };
 let invWs = null;
 let invReconnectTimer = null;
