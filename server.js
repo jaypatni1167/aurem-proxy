@@ -626,16 +626,11 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
     const https = require('https');
     const req = https.request({
       hostname: 'scanner.tradingview.com',
-      path: '/futures/scan?t=' + Date.now(),  // cache-buster
+      path: '/futures/scan',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Origin': 'https://www.tradingview.com',
-        'Referer': 'https://www.tradingview.com/',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache',
+        'User-Agent': 'Mozilla/5.0',
       }
     }, (r) => {
       let data = '';
