@@ -142,6 +142,31 @@
   /* Live tick indicator */
   .live-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; margin-left: 6px; background: rgba(34,197,94,0.2); color: var(--green); border: 1px solid var(--green); }
 
+  @media (max-width: 700px) {
+    header { padding: 10px 12px; gap: 6px; flex-wrap: wrap; }
+    .logo { font-size: 1rem; letter-spacing: 2px; }
+    .header-meta { gap: 6px; flex-wrap: wrap; }
+    .nav-link { padding: 3px 8px; font-size: 0.65rem; }
+    .pill { padding: 3px 8px; font-size: 0.65rem; }
+    #clock { font-size: 0.7rem; }
+    .main { padding: 12px; gap: 12px; }
+    .config-bar { padding: 10px 12px; gap: 10px; }
+    .config-item { flex: 1 1 45%; }
+    .config-item input { width: 100%; }
+    .arb-banner { grid-template-columns: 1fr; gap: 8px; padding: 14px; }
+    .arb-banner-value { font-size: 1.15rem; }
+    .arb-banner-sub { text-align: left; font-size: 0.75rem; }
+    .tabs { padding: 0 12px; }
+    .tab-btn { padding: 8px 14px; font-size: 0.72rem; }
+    .section-title { padding: 10px 12px; font-size: 0.66rem; letter-spacing: 1px; flex-wrap: wrap; }
+    .section-title .tag { font-size: 0.55rem; }
+    .section table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+    th, td { padding: 8px 10px; font-size: 0.78rem; }
+    th { font-size: 0.6rem; }
+    .input-row { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+    .footer { padding: 8px 12px; font-size: 0.66rem; gap: 10px; }
+  }
+
   /* Live tick flash on spot values */
   .tick-flash { animation: tickFlash 0.5s ease; }
   @keyframes tickFlash {

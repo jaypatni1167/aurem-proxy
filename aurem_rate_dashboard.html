@@ -100,10 +100,26 @@
     display: flex; gap: 20px; flex-wrap: wrap;
   }
 
-  @media(max-width:700px) {
-    .main { padding: 14px; gap: 14px; }
-    th, td { padding: 10px 12px; font-size: 0.82rem; }
-    .input-row { grid-template-columns: 1fr; }
+  @media (max-width: 700px) {
+    header { padding: 10px 12px; gap: 6px; flex-wrap: wrap; }
+    .logo { font-size: 1rem; letter-spacing: 2px; }
+    .header-meta { gap: 6px; flex-wrap: wrap; }
+    .nav-link { padding: 3px 8px; font-size: 0.65rem; }
+    .pill { padding: 3px 8px; font-size: 0.65rem; }
+    #clock { font-size: 0.7rem; }
+    .main { padding: 12px; gap: 12px; }
+    .intl-bar { padding: 10px 12px; gap: 12px; }
+    .cards-grid { grid-template-columns: repeat(2, 1fr); padding: 12px 12px 0; gap: 8px; }
+    .card { padding: 12px 14px; }
+    .card-price { font-size: 1.2rem; }
+    .section-head { font-size: 0.62rem; }
+    .section table, .comp-table, .log-table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+    th, td { padding: 8px 10px; font-size: 0.75rem; }
+    th { font-size: 0.58rem; }
+    .analysis-grid { grid-template-columns: 1fr; }
+    .input-row, .input-group { grid-template-columns: 1fr; }
+    .tabs { padding: 0 12px; }
+    .tab { padding: 7px 12px; font-size: 0.72rem; }
   }
 </style>
 </head>
