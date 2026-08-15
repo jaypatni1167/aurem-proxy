@@ -382,6 +382,8 @@ const S = {
   usdinr: null,
   // User's selected contracts (symbol keys, e.g. "MCX:GOLD1!")
   sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null, oilWti: null, oilBrent: null },
+  // Persistent contract cache — once we've seen a contract, keep it until it truly expires
+  contractCache: {},
   lastTick: { gold: 0, silver: 0, oil: 0, fx: 0 },   // per-symbol most-recent update timestamp
 };
 
@@ -493,18 +495,29 @@ function render() {
 
   document.getElementById('ratesSummary').innerHTML = `USD/INR ${usdinr ? Number(usdinr).toFixed(4) : '—'} · Duty ${dutyPct}% · Purity ${purity}`;
 
-  // ── Filter contracts to top 6 nearest maturities per metal per exchange ────────
+  // ── Merge latest scanner data into persistent cache (never removes; only adds/updates) ────────
   const tv = S.tv;
+  Object.entries(tv).forEach(([sym, c]) => {
+    if (!c || !c.metal || !c.expiration) return;
+    const prev = S.contractCache[sym] || {};
+    S.contractCache[sym] = {
+      ...prev,
+      ...c,
+      // Preserve last-known close if the incoming close is null
+      close: c.close != null ? c.close : prev.close,
+    };
+  });
+
+  // ── Filter to top 8 nearest, non-expired contracts per metal ─────────────────────
   const nowMs = Date.now();
-  const filterBy = (metal, prefix) => Object.values(tv).filter(c => {
-    // Don't exclude by close - a temporarily-null value shouldn't remove the row
+  const filterBy = (metal, prefix) => Object.values(S.contractCache).filter(c => {
     if (!c || c.metal !== metal) return false;
     const d = parseExp(c.expiration);
     if (!d) return false;
-    if (d.getTime() < nowMs) return false;
+    if (d.getTime() < nowMs) return false;   // truly expired → drop from cache
     return c.symbol.startsWith(prefix);
   }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0))
-    .slice(0, 8);   // top 8 nearest maturities — the major-volume contracts
+    .slice(0, 8);
 
   const goldMcx    = filterBy('gold', 'MCX:');
   const goldComex  = filterBy('gold', 'COMEX:');
