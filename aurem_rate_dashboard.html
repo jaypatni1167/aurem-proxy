@@ -378,11 +378,12 @@ function renderIndiaBullion() {
   S.bankRateGold   = bankG;
   S.bankRateSilver = bankS;
 
-  // MCX rates from Augmont Firebase (India bullion MCX-derived)
-  //   Gold  ₹/10g:  GOLDMUM999M (Mumbai 999 MCX-derived close)
-  //   Silver ₹/kg:  SILMUMT+2 (Mumbai silver T+2)
-  const mcxG = S.aug?.['GOLDMUM999M']?.sell ?? null;
-  const mcxS = S.aug?.['SILMUMT+2']?.sell ?? null;
+  // MCX Rate — Arihant is the standard bullion-dealer reference (their "Gold Cost" / "Silver Costing")
+  //   Gold  ₹/10g:  ari.GOLD_COST         (Arihant's MCX Gold rate)
+  //   Silver ₹/kg:  ari.SILVER_COSTING    (Arihant's MCX Silver rate)
+  // Fallback to Augmont Mumbai T+2 if Arihant is temporarily missing.
+  const mcxG = S.ari?.['GOLD_COST']?.sell      ?? S.aug?.['GOLDMUMT+2']?.sell   ?? S.aug?.['GOLDMUM1KG995']?.sell ?? null;
+  const mcxS = S.ari?.['SILVER_COSTING']?.sell ?? S.aug?.['SILMUMT+2']?.sell    ?? null;
 
   const diff = (a, b) => (a == null || b == null) ? '—' : simpleDiff(a - b);
   const inr = v => v != null ? INR(v) : '—';
@@ -461,14 +462,10 @@ function renderDealerTables() {
   const aug = S.aug || {};
   const ari = S.ari || {};
 
-  // Common MCX benchmarks (₹/10g gold, ₹/kg silver) — average of both dealers' MCX-derived rates when both available
-  const goldMcxAug = aug['GOLDMUM999M']?.sell ?? null;
-  const goldMcxAri = ari['GOLD_COST']?.sell   ?? null;
-  const goldMcx    = (goldMcxAug != null && goldMcxAri != null) ? (goldMcxAug + goldMcxAri) / 2 : (goldMcxAug ?? goldMcxAri);
-
-  const silvMcxAug = aug['SILMUMT+2']?.sell         ?? null;
-  const silvMcxAri = ari['SILVER_COSTING']?.sell    ?? null;
-  const silvMcx    = (silvMcxAug != null && silvMcxAri != null) ? (silvMcxAug + silvMcxAri) / 2 : (silvMcxAug ?? silvMcxAri);
+  // MCX benchmark — Arihant's Gold Cost / Silver Costing (bullion-dealer standard),
+  // fallback to Augmont Mumbai T+2 if Arihant feed missing.
+  const goldMcx = ari['GOLD_COST']?.sell      ?? aug['GOLDMUMT+2']?.sell ?? aug['GOLDMUM1KG995']?.sell ?? null;
+  const silvMcx = ari['SILVER_COSTING']?.sell ?? aug['SILMUMT+2']?.sell ?? null;
 
   // Bank Rates stored by renderIndiaBullion() on state
   const bankG = S.bankRateGold;
