@@ -148,22 +148,26 @@
       <span>India Bullion — Bank Rate vs MCX vs Your Rate</span>
       <span style="font-size:0.62rem; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.15); font-weight:500;">Formula: (Spot + Prem) × USD/INR × 32.1507 + Custom Duty</span>
     </div>
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Premium/Disc ($/oz)</div>
-        <input type="number" id="ib-gold-prem" value="-10" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Prem/Disc ($/oz)</div>
+        <input type="number" id="ib-gold-prem" value="-10" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:0.85rem; outline:none; font-variant-numeric:tabular-nums;">
       </div>
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Premium/Disc ($/oz)</div>
-        <input type="number" id="ib-silver-prem" value="1.25" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Prem/Disc ($/oz)</div>
+        <input type="number" id="ib-silver-prem" value="1.25" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:0.85rem; outline:none; font-variant-numeric:tabular-nums;">
       </div>
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Custom Duty ₹ <span style="color:var(--gold); text-transform:none; font-size:0.6rem">CBIC fortnightly</span></div>
-        <input type="number" id="ib-gold-duty" value="2009846" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Tariff $/10g <span style="color:var(--gold); text-transform:none; font-size:0.55rem">CBIC 15d</span></div>
+        <input type="number" id="ib-gold-tariff" value="1407" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:0.85rem; outline:none; font-variant-numeric:tabular-nums;">
       </div>
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Custom Duty ₹ <span style="color:var(--silver); text-transform:none; font-size:0.6rem">CBIC fortnightly</span></div>
-        <input type="number" id="ib-silver-duty" value="29909.97" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Tariff $/kg <span style="color:var(--silver); text-transform:none; font-size:0.55rem">CBIC 15d</span></div>
+        <input type="number" id="ib-silver-tariff" value="2097" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:0.85rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+      <div>
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Duty % <span style="color:var(--green); text-transform:none; font-size:0.55rem">Customs + IGST total</span></div>
+        <input type="number" id="ib-duty-pct" value="15" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:0.85rem; outline:none; font-variant-numeric:tabular-nums;">
       </div>
     </div>
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
@@ -241,174 +245,48 @@
     </table>
   </div>
 
-  <!-- ─── Merged Gold Table ─── -->
+  <!-- ─── Gold Dealer Rate Comparison ─── -->
   <div class="section">
     <div class="section-title">
-      Gold — All Rates Compared (₹/10g)
-      <span class="tag" id="goldDutyTag">MCX Duty baseline</span>
+      <span class="accent-gold" style="color:var(--gold)">■</span> Gold — Dealer Rates vs MCX vs Bank Rate <span style="font-size:0.62rem; color:var(--muted); font-weight:400; margin-left:8px;">(all ₹/10g)</span>
+      <span class="tag">Sourcing reference</span>
     </div>
     <table>
       <thead>
         <tr>
-          <th>Source · Product</th>
-          <th>Rate</th>
-          <th>vs MCX Duty</th>
-          <th>vs Source MCX Costing</th>
+          <th>Dealer · Product</th>
+          <th>Sell Rate</th>
+          <th>MCX Rate</th>
+          <th>vs MCX</th>
+          <th>Bank Rate</th>
+          <th>vs Bank Rate</th>
         </tr>
       </thead>
-      <tbody>
-        <tr style="background:var(--surface2)">
-          <td><b>MCX Duty Base</b> <span style="font-size:0.7rem;color:var(--muted)">($/oz × USD/INR × 1.152)</span></td>
-          <td class="val-orange" id="gd-duty">—</td>
-          <td class="val-muted">baseline</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Augmont · MCX Costing</td>
-          <td class="val-orange" id="gd-augMcx">—</td>
-          <td id="gd-augMcx-vsDuty">—</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Augmont · 1 KG 999 Sell</td>
-          <td class="val-gold" id="gd-aug999">—</td>
-          <td id="gd-aug999-vsDuty">—</td>
-          <td id="gd-aug999-vsMcx">—</td>
-        </tr>
-        <tr>
-          <td>Augmont · 1 KG 995 Sell</td>
-          <td class="val-gold" id="gd-aug995">—</td>
-          <td id="gd-aug995-vsDuty">—</td>
-          <td id="gd-aug995-vsMcx">—</td>
-        </tr>
-        <tr>
-          <td>Arihant · MCX Costing</td>
-          <td class="val-orange" id="gd-ariMcx">—</td>
-          <td id="gd-ariMcx-vsDuty">—</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Arihant · 1 KG 999 Sell</td>
-          <td class="val-gold" id="gd-ari999">—</td>
-          <td id="gd-ari999-vsDuty">—</td>
-          <td id="gd-ari999-vsMcx">—</td>
-        </tr>
-        <tr>
-          <td>Arihant · 1 KG 995 Sell</td>
-          <td class="val-gold" id="gd-ari995">—</td>
-          <td id="gd-ari995-vsDuty">—</td>
-          <td id="gd-ari995-vsMcx">—</td>
-        </tr>
+      <tbody id="gold-dealer-tbody">
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Loading dealer data…</td></tr>
       </tbody>
     </table>
   </div>
 
-  <!-- ─── Merged Silver Table ─── -->
+  <!-- ─── Silver Dealer Rate Comparison ─── -->
   <div class="section">
     <div class="section-title">
-      Silver — All Rates Compared (₹/kg)
-      <span class="tag" id="silvDutyTag">MCX Duty baseline</span>
+      <span class="accent-silver" style="color:var(--silver)">■</span> Silver — Dealer Rates vs MCX vs Bank Rate <span style="font-size:0.62rem; color:var(--muted); font-weight:400; margin-left:8px;">(all ₹/kg)</span>
+      <span class="tag">Sourcing reference</span>
     </div>
     <table>
       <thead>
         <tr>
-          <th>Source · Product</th>
-          <th>Rate</th>
-          <th>vs MCX Duty</th>
-          <th>vs Source MCX Costing</th>
+          <th>Dealer · Product</th>
+          <th>Sell Rate</th>
+          <th>MCX Rate</th>
+          <th>vs MCX</th>
+          <th>Bank Rate</th>
+          <th>vs Bank Rate</th>
         </tr>
       </thead>
-      <tbody>
-        <tr style="background:var(--surface2)">
-          <td><b>MCX Duty Base</b> <span style="font-size:0.7rem;color:var(--muted)">($/oz × USD/INR × 1.152)</span></td>
-          <td class="val-orange" id="sv-duty">—</td>
-          <td class="val-muted">baseline</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Augmont · MCX Costing</td>
-          <td class="val-orange" id="sv-augMcx">—</td>
-          <td id="sv-augMcx-vsDuty">—</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Augmont · 30 KG 999 Sell</td>
-          <td class="val-silver" id="sv-aug30">—</td>
-          <td id="sv-aug30-vsDuty">—</td>
-          <td id="sv-aug30-vsMcx">—</td>
-        </tr>
-        <tr>
-          <td>Arihant · MCX Costing</td>
-          <td class="val-orange" id="sv-ariMcx">—</td>
-          <td id="sv-ariMcx-vsDuty">—</td>
-          <td class="val-muted">—</td>
-        </tr>
-        <tr>
-          <td>Arihant · 30 KG 999 Sell</td>
-          <td class="val-silver" id="sv-ari30">—</td>
-          <td id="sv-ari30-vsDuty">—</td>
-          <td id="sv-ari30-vsMcx">—</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- ─── Table 4: Premium/Discount over MCX Duty Rate ─── -->
-  <div class="section">
-    <div class="section-title">
-      Your Sell Rate = MCX Duty Rate + Your Premium/Discount
-      <span class="tag">Enter ₹ premium (positive) or discount (negative)</span>
-    </div>
-    <div class="input-row">
-      <div class="input-group">
-        <label>Gold 999 — Premium/Discount (₹/10g)</label>
-        <input type="number" id="myGold999Prem" placeholder="e.g. 200 or -150" oninput="calcMyRate()">
-      </div>
-      <div class="input-group">
-        <label>Gold 995 — Premium/Discount (₹/10g)</label>
-        <input type="number" id="myGold995Prem" placeholder="e.g. -500" oninput="calcMyRate()">
-      </div>
-      <div class="input-group">
-        <label>Silver 999 — Premium/Discount (₹/kg)</label>
-        <input type="number" id="mySilverPrem" placeholder="e.g. 500" oninput="calcMyRate()">
-      </div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>MCX Duty Base ₹/10g</th>
-          <th>± Your Premium</th>
-          <th>Your Sell Rate</th>
-          <th>vs Augmont</th>
-          <th>vs Arihant</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Gold 999</td>
-          <td class="val-orange" id="my-g999-base">—</td>
-          <td id="my-g999-prem">—</td>
-          <td class="val-gold" id="my-g999-val">—</td>
-          <td id="my-g999-aug">—</td>
-          <td id="my-g999-ari">—</td>
-        </tr>
-        <tr>
-          <td>Gold 995</td>
-          <td class="val-orange" id="my-g995-base">—</td>
-          <td id="my-g995-prem">—</td>
-          <td class="val-gold" id="my-g995-val">—</td>
-          <td id="my-g995-aug">—</td>
-          <td id="my-g995-ari">—</td>
-        </tr>
-        <tr>
-          <td>Silver 999</td>
-          <td class="val-orange" id="my-sil-base">—</td>
-          <td id="my-sil-prem">—</td>
-          <td class="val-silver" id="my-sil-val">—</td>
-          <td id="my-sil-aug">—</td>
-          <td id="my-sil-ari">—</td>
-        </tr>
+      <tbody id="silver-dealer-tbody">
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Loading dealer data…</td></tr>
       </tbody>
     </table>
   </div>
@@ -465,29 +343,40 @@ function simpleDiff(diff) {
   return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>`;
 }
 
-// India Bullion Bank Rate calculator — matches CBIC formula from the reference spreadsheet
-// Gold ₹/10g   = [(Spot + Prem) × USD/INR × 32.1507 + Custom Duty ₹] ÷ 100
-// Silver ₹/kg  = (Spot + Prem) × USD/INR × 32.1507 + Custom Duty ₹
+// India Bullion Bank Rate — CBIC formula (Tariff Value based, single combined Duty%)
+//   Custom Duty (₹) = TariffValue $ × USD/INR × Duty%          [stays fixed for the fortnight]
+//   Intl Value (₹)  = (Spot + Prem) × USD/INR ÷ 31.1035 × unit  [live]
+//   Bank Rate (₹)   = Intl Value + Custom Duty
+// Note: The 15% Duty% is the combined effective rate (BCD 6% + AIDC 5% + SWS 0.6% + IGST 3%).
+// We use a single input to match the CBIC-style bullion pricing spreadsheet.
 function renderIndiaBullion() {
   const tbody = document.getElementById('ib-tbody');
   if (!tbody) return;
-  const CONV = 1000 / 31.1035;   // 32.15069 — grams per troy ounce → kg factor
 
   const spotG = S.xauAsk;
   const spotS = S.xagAsk;
   const fx    = S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
   const premG = parseFloat(document.getElementById('ib-gold-prem').value)   || 0;
   const premS = parseFloat(document.getElementById('ib-silver-prem').value) || 0;
-  const dutyG = parseFloat(document.getElementById('ib-gold-duty').value)   || 0;
-  const dutyS = parseFloat(document.getElementById('ib-silver-duty').value) || 0;
+  const tariffG = parseFloat(document.getElementById('ib-gold-tariff').value)   || 0;   // $/10g
+  const tariffS = parseFloat(document.getElementById('ib-silver-tariff').value) || 0;   // $/kg
+  const dutyPct = (parseFloat(document.getElementById('ib-duty-pct').value) || 0) / 100;
   const myG   = parseFloat(document.getElementById('ib-my-gold').value);
   const myS   = parseFloat(document.getElementById('ib-my-silver').value);
 
-  // Bank Rate formula (matches the CBIC spreadsheet)
-  const bankG = (spotG != null && fx != null)
-    ? ((spotG + premG) * fx * CONV + dutyG) / 100 : null;    // ₹/10g
-  const bankS = (spotS != null && fx != null)
-    ? (spotS + premS) * fx * CONV + dutyS : null;             // ₹/kg
+  // Custom Duty (₹) — fortnightly-fixed
+  const dutyG = (fx != null) ? tariffG * fx * dutyPct : null;
+  const dutyS = (fx != null) ? tariffS * fx * dutyPct : null;
+
+  // International Value ₹ (moves live with spot)
+  const intlG = (spotG != null && fx != null) ? (spotG + premG) * fx / 31.1035 * 10   : null;
+  const intlS = (spotS != null && fx != null) ? (spotS + premS) * fx / 31.1035 * 1000 : null;
+
+  // Bank Rate = Intl Value + Custom Duty
+  const bankG = (intlG != null && dutyG != null) ? intlG + dutyG : null;
+  const bankS = (intlS != null && dutyS != null) ? intlS + dutyS : null;
+  S.bankRateGold   = bankG;
+  S.bankRateSilver = bankS;
 
   // MCX rates from Augmont Firebase (India bullion MCX-derived)
   //   Gold  ₹/10g:  GOLDMUM999M (Mumbai 999 MCX-derived close)
@@ -499,12 +388,14 @@ function renderIndiaBullion() {
   const inr = v => v != null ? INR(v) : '—';
   const usd = v => v != null ? USD(v) : '—';
 
+  const dutyCell = (v) => v != null ? '₹' + Math.round(v).toLocaleString('en-IN') : '—';
+
   tbody.innerHTML = `
     <tr>
       <td><b style="color:var(--gold)">Gold</b><br><span style="color:var(--muted);font-size:0.7rem">₹/10g</span></td>
       <td>${usd(spotG)}${premG !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premG >= 0 ? '+' : ''}${premG}</span>` : ''}</td>
       <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
-      <td style="color:var(--muted)">₹${dutyG.toLocaleString('en-IN')}</td>
+      <td style="color:var(--muted)">${dutyCell(dutyG)}</td>
       <td class="val-gold">${inr(bankG)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxG)}</td>
       <td>${diff(bankG, mcxG)}</td>
@@ -516,7 +407,7 @@ function renderIndiaBullion() {
       <td><b style="color:var(--silver)">Silver</b><br><span style="color:var(--muted);font-size:0.7rem">₹/kg</span></td>
       <td>${usd(spotS)}${premS !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premS >= 0 ? '+' : ''}${premS}</span>` : ''}</td>
       <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
-      <td style="color:var(--muted)">₹${dutyS.toLocaleString('en-IN')}</td>
+      <td style="color:var(--muted)">${dutyCell(dutyS)}</td>
       <td class="val-silver">${inr(bankS)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxS)}</td>
       <td>${diff(bankS, mcxS)}</td>
@@ -561,48 +452,91 @@ function render() {
     document.getElementById('xag-inr').textContent = INR(inr) + ' / kg (raw)';
   }
 
-  // ── Merged Gold + Silver Tables ──────────────────────────
-  const goldAsk = S.xauAsk;
-  const silvAsk = S.xagAsk;
-  const fx = augFx?.buy ?? ariFx?.buy ?? null;
+  // ── Dealer Comparison Tables (Gold + Silver) ──────────
+  renderDealerTables();
+}
 
-  // GOLD
-  const goldDuty = (goldAsk && fx) ? (goldAsk / 31.1035) * fx * 10 * 1.152 : null;
-  const goldAugMcx = aug['GOLDMUM999M']?.sell ?? null;
-  const goldAriMcx = ari['GOLD_COST']?.sell ?? null;
-  const goldAug999 = aug['10GMUM999']?.sell ?? null;
-  const goldAug995 = aug['10GMUM995']?.sell ?? null;
+// Build the Gold + Silver dealer comparison tables (Augmont + Arihant products vs MCX vs Bank Rate)
+function renderDealerTables() {
+  const aug = S.aug || {};
+  const ari = S.ari || {};
 
-  const ari999Raw = findKey(ari, 'GOLD_999_IND-BIS_(100GM)_T+0', 'GOLD_999_IND-BIS_(100GM)_', 'GOLD_999_INDIAN_(1KG)_T+0', 'GOLD_999_IND-BIS_');
-  const ari995Raw = findKey(ari, 'GOLD_995_(1KG)_IND-BIS_T+0', 'GOLD_995_(1KG)_IND-BIS_', 'GOLD_995_(1KG)_');
-  const goldAri999 = ari999Raw ? (ari999Raw.sell > 0 ? ari999Raw.sell : ari999Raw.buy) : null;
-  const goldAri995 = ari995Raw ? (ari995Raw.sell > 0 ? ari995Raw.sell : ari995Raw.buy) : null;
+  // Common MCX benchmarks (₹/10g gold, ₹/kg silver) — average of both dealers' MCX-derived rates when both available
+  const goldMcxAug = aug['GOLDMUM999M']?.sell ?? null;
+  const goldMcxAri = ari['GOLD_COST']?.sell   ?? null;
+  const goldMcx    = (goldMcxAug != null && goldMcxAri != null) ? (goldMcxAug + goldMcxAri) / 2 : (goldMcxAug ?? goldMcxAri);
 
-  setText('gd-duty',   goldDuty != null ? INR(goldDuty) : '—');
-  fillCompare('gd-augMcx', goldAugMcx, goldDuty, null);
-  fillCompare('gd-aug999', goldAug999, goldDuty, goldAugMcx);
-  fillCompare('gd-aug995', goldAug995, goldDuty, goldAugMcx);
-  fillCompare('gd-ariMcx', goldAriMcx, goldDuty, null);
-  fillCompare('gd-ari999', goldAri999, goldDuty, goldAriMcx);
-  fillCompare('gd-ari995', goldAri995, goldDuty, goldAriMcx);
+  const silvMcxAug = aug['SILMUMT+2']?.sell         ?? null;
+  const silvMcxAri = ari['SILVER_COSTING']?.sell    ?? null;
+  const silvMcx    = (silvMcxAug != null && silvMcxAri != null) ? (silvMcxAug + silvMcxAri) / 2 : (silvMcxAug ?? silvMcxAri);
 
-  // SILVER — all values in ₹/kg
-  const silvDuty   = (silvAsk && fx) ? (silvAsk / 31.1035) * fx * 1000 * 1.152 : null;
-  const silvAugMcx = aug['SILMUMT+2']?.sell ?? null;
-  const silvAriMcx = ari['SILVER_COSTING']?.sell ?? null;
-  const augSil10g  = aug['SIL10GM999']?.sell ?? null;
-  const silvAug30  = augSil10g != null ? augSil10g * 100 : null;
-  const ariSil30Raw = findKey(ari, 'SILVER_IMPORTED_(30KG)_T+0', 'SILVER_IMPORTED_(30KG)_', 'SILVER_IMPORTED_');
-  const silvAri30   = ariSil30Raw ? (ariSil30Raw.sell > 0 ? ariSil30Raw.sell : ariSil30Raw.buy) : null;
+  // Bank Rates stored by renderIndiaBullion() on state
+  const bankG = S.bankRateGold;
+  const bankS = S.bankRateSilver;
 
-  setText('sv-duty',   silvDuty != null ? INR(silvDuty) + '/kg' : '—');
-  fillCompare('sv-augMcx', silvAugMcx, silvDuty, null, '/kg');
-  fillCompare('sv-aug30',  silvAug30,  silvDuty, silvAugMcx, '/kg');
-  fillCompare('sv-ariMcx', silvAriMcx, silvDuty, null, '/kg');
-  fillCompare('sv-ari30',  silvAri30,  silvDuty, silvAriMcx, '/kg');
+  // Helper to look up Arihant dated keys robustly
+  const ariGold999 = (function () {
+    const r = findKey(ari, 'GOLD_999_IND-BIS_(100GM)_T+0', 'GOLD_999_IND-BIS_(100GM)_', 'GOLD_999_INDIAN_(1KG)_T+0', 'GOLD_999_IND-BIS_');
+    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
+  })();
+  const ariGold995 = (function () {
+    const r = findKey(ari, 'GOLD_995_(1KG)_IND-BIS_T+0', 'GOLD_995_(1KG)_IND-BIS_', 'GOLD_995_(1KG)_');
+    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
+  })();
+  const ariSilver30kg = (function () {
+    const r = findKey(ari, 'SILVER_IMPORTED_(30KG)_T+0', 'SILVER_IMPORTED_(30KG)_', 'SILVER_IMPORTED_');
+    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
+  })();
 
-  // ── Table 4: Your rate vs market ────────────────────────
-  calcMyRate();
+  // ── Gold table rows ────────────────────────────────────
+  const goldRows = [
+    // Augmont gold products (₹/10g)
+    { dealer: 'Augmont', product: 'Gold 999 (Mumbai T+0 Ex-GST)',    rate: aug['GOLDMUM999M']?.sell ?? null },
+    { dealer: 'Augmont', product: 'Gold 999 · 10g Retail (₹/10g)',   rate: aug['10GMUM999']?.sell   ?? null },
+    { dealer: 'Augmont', product: 'Gold 995 · 10g Retail (₹/10g)',   rate: aug['10GMUM995']?.sell   ?? null },
+    { dealer: 'Augmont', product: 'Gold 995 · 1kg Retail (₹/10g)',   rate: aug['GOLDMUM1KG995']?.sell ?? null },
+    { dealer: 'Augmont', product: 'Gold Coin 10g 999 (₹/10g)',       rate: aug['COIN999G10']?.sell  ?? null },
+    // Arihant gold products
+    { dealer: 'Arihant', product: 'Gold 999 · 100g IND-BIS T+0',     rate: ariGold999 },
+    { dealer: 'Arihant', product: 'Gold 995 · 1kg IND-BIS T+0',      rate: ariGold995 },
+  ];
+
+  // ── Silver table rows (all ₹/kg) ───────────────────────
+  const augSil10g = aug['SIL10GM999']?.sell ?? null;
+  const silverRows = [
+    // Augmont
+    { dealer: 'Augmont', product: 'Silver 999 · Peti Mumbai (₹/kg)',   rate: aug['SILMUMPETI']?.sell    ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · T+2 Mumbai (₹/kg)',    rate: aug['SILMUMT+2']?.sell     ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · 5kg T+2 Mumbai',        rate: aug['SILMUM5T+2']?.sell    ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · Chorsa Mumbai',         rate: aug['SILMUMCHORSA']?.sell  ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · 20kg Mumbai',           rate: aug['SILMUM20KG']?.sell    ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · 1kg Bar',                rate: aug['SIL1KGBAR999']?.sell  ?? null },
+    { dealer: 'Augmont', product: 'Silver 999 · 10g Retail (×100 →kg)', rate: augSil10g != null ? augSil10g * 100 : null },
+    // Arihant
+    { dealer: 'Arihant', product: 'Silver 999 · Imported 30kg T+0',     rate: ariSilver30kg },
+    { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',            rate: ari['SILVER_COSTING']?.sell ?? null },
+  ];
+
+  document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, '');
+  document.getElementById('silver-dealer-tbody').innerHTML = renderDealerRows(silverRows, silvMcx, bankS, '');
+}
+
+function renderDealerRows(rows, mcx, bank, unit) {
+  if (!rows.length) return `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No data yet…</td></tr>`;
+  return rows.map(r => {
+    const rate = r.rate;
+    const vsMcx  = (rate != null && mcx  != null) ? simpleDiff(rate - mcx)  : '—';
+    const vsBank = (rate != null && bank != null) ? simpleDiff(rate - bank) : '—';
+    const cls = r.dealer === 'Augmont' ? 'val-gold' : 'val-blue';
+    return `<tr>
+      <td><b style="color:${r.dealer === 'Augmont' ? 'var(--gold)' : 'var(--blue)'};">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
+      <td class="${cls}">${rate != null ? INR(rate) + unit : '—'}</td>
+      <td class="val-orange">${mcx  != null ? INR(mcx)  + unit : '—'}</td>
+      <td>${vsMcx}</td>
+      <td class="val-green">${bank != null ? INR(bank) + unit : '—'}</td>
+      <td>${vsBank}</td>
+    </tr>`;
+  }).join('');
 }
 
 function setText(id, val) {
