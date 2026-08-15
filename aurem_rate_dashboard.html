@@ -172,12 +172,12 @@
     </div>
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Your Gold Rate (₹/10g)</div>
-        <input type="number" id="ib-my-gold" placeholder="e.g. 154800" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Live USD/INR <span style="color:var(--green); text-transform:none; font-size:0.6rem">(auto · Augmont Firebase · used for spot calc)</span></div>
+        <div id="ib-live-fx" style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--green); font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums;">—</div>
       </div>
       <div>
-        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Your Silver Rate (₹/kg)</div>
-        <input type="number" id="ib-my-silver" placeholder="e.g. 232500" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">CBIC USD/INR <span style="color:var(--gold); text-transform:none; font-size:0.6rem">(manual · used for customs duty)</span></div>
+        <input type="number" id="ib-cbic-fx" value="95.06" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.95rem; outline:none; font-variant-numeric:tabular-nums; font-weight:700;">
       </div>
     </div>
     <table>
@@ -185,18 +185,16 @@
         <tr>
           <th>Metal</th>
           <th>Spot $/oz</th>
-          <th>USD/INR</th>
+          <th>Live USD/INR</th>
+          <th>CBIC USD/INR</th>
           <th>Custom Duty ₹</th>
           <th>Bank Rate</th>
           <th>MCX Rate</th>
           <th>Bank − MCX</th>
-          <th>Your Rate</th>
-          <th>Your − Bank</th>
-          <th>Your − MCX</th>
         </tr>
       </thead>
       <tbody id="ib-tbody">
-        <tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Waiting for spot + MCX data…</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Waiting for spot + MCX data…</td></tr>
       </tbody>
     </table>
   </div>
@@ -343,34 +341,36 @@ function simpleDiff(diff) {
   return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>`;
 }
 
-// India Bullion Bank Rate — CBIC formula (Tariff Value based, single combined Duty%)
-//   Custom Duty (₹) = TariffValue $ × USD/INR × Duty%          [stays fixed for the fortnight]
-//   Intl Value (₹)  = (Spot + Prem) × USD/INR ÷ 31.1035 × unit  [live]
+// India Bullion Bank Rate — CBIC formula (Tariff Value based)
+//   Custom Duty (₹) = Tariff × CBIC USD/INR × Duty%              [fortnightly-fixed]
+//   Intl Value (₹)  = (Spot + Prem) × Live USD/INR ÷ 31.1035 × unit  [moves live]
 //   Bank Rate (₹)   = Intl Value + Custom Duty
-// Note: The 15% Duty% is the combined effective rate (BCD 6% + AIDC 5% + SWS 0.6% + IGST 3%).
-// We use a single input to match the CBIC-style bullion pricing spreadsheet.
+// Note: 15% Duty% is the combined effective rate (BCD 6% + AIDC 5% + SWS 0.6% + IGST 3%).
 function renderIndiaBullion() {
   const tbody = document.getElementById('ib-tbody');
   if (!tbody) return;
 
   const spotG = S.xauAsk;
   const spotS = S.xagAsk;
-  const fx    = S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+  const liveFx = S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+  const cbicFx = parseFloat(document.getElementById('ib-cbic-fx').value) || liveFx || 0;
+  // Show live FX in the input row
+  const liveFxEl = document.getElementById('ib-live-fx');
+  if (liveFxEl) liveFxEl.textContent = liveFx != null ? '₹' + liveFx.toFixed(4) : '—';
+
   const premG = parseFloat(document.getElementById('ib-gold-prem').value)   || 0;
   const premS = parseFloat(document.getElementById('ib-silver-prem').value) || 0;
-  const tariffG = parseFloat(document.getElementById('ib-gold-tariff').value)   || 0;   // $/10g
-  const tariffS = parseFloat(document.getElementById('ib-silver-tariff').value) || 0;   // $/kg
+  const tariffG = parseFloat(document.getElementById('ib-gold-tariff').value)   || 0;
+  const tariffS = parseFloat(document.getElementById('ib-silver-tariff').value) || 0;
   const dutyPct = (parseFloat(document.getElementById('ib-duty-pct').value) || 0) / 100;
-  const myG   = parseFloat(document.getElementById('ib-my-gold').value);
-  const myS   = parseFloat(document.getElementById('ib-my-silver').value);
 
-  // Custom Duty (₹) — fortnightly-fixed
-  const dutyG = (fx != null) ? tariffG * fx * dutyPct : null;
-  const dutyS = (fx != null) ? tariffS * fx * dutyPct : null;
+  // Custom Duty (₹) — uses CBIC rate, fortnightly-fixed
+  const dutyG = (cbicFx > 0) ? tariffG * cbicFx * dutyPct : null;
+  const dutyS = (cbicFx > 0) ? tariffS * cbicFx * dutyPct : null;
 
-  // International Value ₹ (moves live with spot)
-  const intlG = (spotG != null && fx != null) ? (spotG + premG) * fx / 31.1035 * 10   : null;
-  const intlS = (spotS != null && fx != null) ? (spotS + premS) * fx / 31.1035 * 1000 : null;
+  // International Value ₹ — uses live market FX
+  const intlG = (spotG != null && liveFx != null) ? (spotG + premG) * liveFx / 31.1035 * 10   : null;
+  const intlS = (spotS != null && liveFx != null) ? (spotS + premS) * liveFx / 31.1035 * 1000 : null;
 
   // Bank Rate = Intl Value + Custom Duty
   const bankG = (intlG != null && dutyG != null) ? intlG + dutyG : null;
@@ -390,31 +390,28 @@ function renderIndiaBullion() {
   const usd = v => v != null ? USD(v) : '—';
 
   const dutyCell = (v) => v != null ? '₹' + Math.round(v).toLocaleString('en-IN') : '—';
+  const fxCell = (v) => v != null ? '₹' + Number(v).toFixed(4) : '—';
 
   tbody.innerHTML = `
     <tr>
       <td><b style="color:var(--gold)">Gold</b><br><span style="color:var(--muted);font-size:0.7rem">₹/10g</span></td>
       <td>${usd(spotG)}${premG !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premG >= 0 ? '+' : ''}${premG}</span>` : ''}</td>
-      <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
+      <td style="color:var(--green)">${fxCell(liveFx)}</td>
+      <td style="color:var(--gold)">${fxCell(cbicFx)}</td>
       <td style="color:var(--muted)">${dutyCell(dutyG)}</td>
       <td class="val-gold">${inr(bankG)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxG)}</td>
       <td>${diff(bankG, mcxG)}</td>
-      <td>${myG ? inr(myG) : '—'}</td>
-      <td>${myG ? diff(myG, bankG) : '—'}</td>
-      <td>${myG ? diff(myG, mcxG) : '—'}</td>
     </tr>
     <tr>
       <td><b style="color:var(--silver)">Silver</b><br><span style="color:var(--muted);font-size:0.7rem">₹/kg</span></td>
       <td>${usd(spotS)}${premS !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premS >= 0 ? '+' : ''}${premS}</span>` : ''}</td>
-      <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
+      <td style="color:var(--green)">${fxCell(liveFx)}</td>
+      <td style="color:var(--gold)">${fxCell(cbicFx)}</td>
       <td style="color:var(--muted)">${dutyCell(dutyS)}</td>
       <td class="val-silver">${inr(bankS)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxS)}</td>
       <td>${diff(bankS, mcxS)}</td>
-      <td>${myS ? inr(myS) : '—'}</td>
-      <td>${myS ? diff(myS, bankS) : '—'}</td>
-      <td>${myS ? diff(myS, mcxS) : '—'}</td>
     </tr>
   `;
 }
