@@ -142,6 +142,61 @@
 
 <div class="main">
 
+  <!-- ─── India Bullion — Bank Rate vs MCX vs Your Rate ─── -->
+  <div class="section" style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+    <div class="section-title" style="padding:12px 20px; background:#2a4d80; color:#fff; font-weight:700; letter-spacing:1px; font-size:0.8rem; display:flex; justify-content:space-between; align-items:center;">
+      <span>India Bullion — Bank Rate vs MCX vs Your Rate</span>
+      <span style="font-size:0.62rem; padding:2px 8px; border-radius:10px; background:rgba(255,255,255,0.15); font-weight:500;">Formula: (Spot + Prem) × USD/INR × 32.1507 + Custom Duty</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 14px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Premium/Disc ($/oz)</div>
+        <input type="number" id="ib-gold-prem" value="-10" step="0.1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Premium/Disc ($/oz)</div>
+        <input type="number" id="ib-silver-prem" value="1.25" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Gold Custom Duty ₹ <span style="color:var(--gold); text-transform:none; font-size:0.6rem">CBIC fortnightly</span></div>
+        <input type="number" id="ib-gold-duty" value="2009846" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Silver Custom Duty ₹ <span style="color:var(--silver); text-transform:none; font-size:0.6rem">CBIC fortnightly</span></div>
+        <input type="number" id="ib-silver-duty" value="29909.97" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Your Gold Rate (₹/10g)</div>
+        <input type="number" id="ib-my-gold" placeholder="e.g. 154800" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+      <div>
+        <div style="font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Your Silver Rate (₹/kg)</div>
+        <input type="number" id="ib-my-silver" placeholder="e.g. 232500" step="1" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.9rem; outline:none; font-variant-numeric:tabular-nums;">
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Metal</th>
+          <th>Spot $/oz</th>
+          <th>USD/INR</th>
+          <th>Custom Duty ₹</th>
+          <th>Bank Rate</th>
+          <th>MCX Rate</th>
+          <th>Bank − MCX</th>
+          <th>Your Rate</th>
+          <th>Your − Bank</th>
+          <th>Your − MCX</th>
+        </tr>
+      </thead>
+      <tbody id="ib-tbody">
+        <tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px">Waiting for spot + MCX data…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- ─── Table 1: International Spot Rates + USD ─── -->
   <div class="section">
     <div class="section-title">
@@ -410,8 +465,73 @@ function simpleDiff(diff) {
   return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>`;
 }
 
+// India Bullion Bank Rate calculator — matches CBIC formula from the reference spreadsheet
+// Gold ₹/10g   = [(Spot + Prem) × USD/INR × 32.1507 + Custom Duty ₹] ÷ 100
+// Silver ₹/kg  = (Spot + Prem) × USD/INR × 32.1507 + Custom Duty ₹
+function renderIndiaBullion() {
+  const tbody = document.getElementById('ib-tbody');
+  if (!tbody) return;
+  const CONV = 1000 / 31.1035;   // 32.15069 — grams per troy ounce → kg factor
+
+  const spotG = S.xauAsk;
+  const spotS = S.xagAsk;
+  const fx    = S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+  const premG = parseFloat(document.getElementById('ib-gold-prem').value)   || 0;
+  const premS = parseFloat(document.getElementById('ib-silver-prem').value) || 0;
+  const dutyG = parseFloat(document.getElementById('ib-gold-duty').value)   || 0;
+  const dutyS = parseFloat(document.getElementById('ib-silver-duty').value) || 0;
+  const myG   = parseFloat(document.getElementById('ib-my-gold').value);
+  const myS   = parseFloat(document.getElementById('ib-my-silver').value);
+
+  // Bank Rate formula (matches the CBIC spreadsheet)
+  const bankG = (spotG != null && fx != null)
+    ? ((spotG + premG) * fx * CONV + dutyG) / 100 : null;    // ₹/10g
+  const bankS = (spotS != null && fx != null)
+    ? (spotS + premS) * fx * CONV + dutyS : null;             // ₹/kg
+
+  // MCX rates from Augmont Firebase (India bullion MCX-derived)
+  //   Gold  ₹/10g:  GOLDMUM999M (Mumbai 999 MCX-derived close)
+  //   Silver ₹/kg:  SILMUMT+2 (Mumbai silver T+2)
+  const mcxG = S.aug?.['GOLDMUM999M']?.sell ?? null;
+  const mcxS = S.aug?.['SILMUMT+2']?.sell ?? null;
+
+  const diff = (a, b) => (a == null || b == null) ? '—' : simpleDiff(a - b);
+  const inr = v => v != null ? INR(v) : '—';
+  const usd = v => v != null ? USD(v) : '—';
+
+  tbody.innerHTML = `
+    <tr>
+      <td><b style="color:var(--gold)">Gold</b><br><span style="color:var(--muted);font-size:0.7rem">₹/10g</span></td>
+      <td>${usd(spotG)}${premG !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premG >= 0 ? '+' : ''}${premG}</span>` : ''}</td>
+      <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
+      <td style="color:var(--muted)">₹${dutyG.toLocaleString('en-IN')}</td>
+      <td class="val-gold">${inr(bankG)}</td>
+      <td style="color:var(--orange);font-weight:700">${inr(mcxG)}</td>
+      <td>${diff(bankG, mcxG)}</td>
+      <td>${myG ? inr(myG) : '—'}</td>
+      <td>${myG ? diff(myG, bankG) : '—'}</td>
+      <td>${myG ? diff(myG, mcxG) : '—'}</td>
+    </tr>
+    <tr>
+      <td><b style="color:var(--silver)">Silver</b><br><span style="color:var(--muted);font-size:0.7rem">₹/kg</span></td>
+      <td>${usd(spotS)}${premS !== 0 ? ` <span style="color:var(--muted);font-size:0.7rem">${premS >= 0 ? '+' : ''}${premS}</span>` : ''}</td>
+      <td>${fx ? '₹' + fx.toFixed(4) : '—'}</td>
+      <td style="color:var(--muted)">₹${dutyS.toLocaleString('en-IN')}</td>
+      <td class="val-silver">${inr(bankS)}</td>
+      <td style="color:var(--orange);font-weight:700">${inr(mcxS)}</td>
+      <td>${diff(bankS, mcxS)}</td>
+      <td>${myS ? inr(myS) : '—'}</td>
+      <td>${myS ? diff(myS, bankS) : '—'}</td>
+      <td>${myS ? diff(myS, mcxS) : '—'}</td>
+    </tr>
+  `;
+}
+
 function render() {
   const aug = S.aug, ari = S.ari;
+
+  // ── India Bullion — Bank Rate calculator (top of page) ──
+  renderIndiaBullion();
 
   // ── Table 1: International Spot Rates + USD ─────────────
   document.getElementById('intl-source-tag').textContent = S.intlSource;
@@ -607,6 +727,11 @@ function connectWS() {
         S.ari = msg.prices;
         document.getElementById('ari-update').textContent =
           new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      } else if (msg.source === 'tvspot') {
+        // Spot prices from investing.com / goldprice.org
+        if (msg.prices.XAUUSD) { S.xauBid = msg.prices.XAUUSD.bid; S.xauAsk = msg.prices.XAUUSD.ask; }
+        if (msg.prices.XAGUSD) { S.xagBid = msg.prices.XAGUSD.bid; S.xagAsk = msg.prices.XAGUSD.ask; }
+        S.intlSource = 'TradingView + goldprice.org';
       } else if (msg.source === 'mt5') {
         S.mt5 = msg.prices;
         S.xauBid = msg.prices.XAUUSD.buy;
