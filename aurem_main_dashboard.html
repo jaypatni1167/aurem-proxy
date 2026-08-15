@@ -127,6 +127,20 @@
   .opp-chip.no  { background: rgba(107,114,128,0.1); color: var(--muted); border: 1px solid var(--border); }
   .live-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; margin-left: 5px; background: rgba(34,197,94,0.18); color: var(--green); border: 1px solid var(--green); }
 
+  /* Sub-second heartbeat pulse — subtle sweep that shows data is flowing */
+  .heartbeat { position: relative; overflow: hidden; }
+  .heartbeat::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(96,165,250,0.15), transparent);
+    animation: sweep 0.8s ease;
+    pointer-events: none;
+  }
+  @keyframes sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .ticker-age { font-size: 0.62rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
   /* Selector row inside a section */
   .selector-row {
     display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
@@ -145,6 +159,41 @@
 
   @media(max-width: 900px) {
     .ticker-bar { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 768px) {
+    header { padding: 10px 12px; gap: 6px; flex-wrap: wrap; }
+    .logo { font-size: 1rem; letter-spacing: 2px; }
+    .header-meta { gap: 6px; flex-wrap: wrap; }
+    .nav-link { padding: 6px 10px; font-size: 0.68rem; }
+    .pill { padding: 5px 10px; font-size: 0.65rem; }
+    #clock { font-size: 0.7rem; }
+    .ticker-bar { grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 12px 0; }
+    .ticker { padding: 12px; }
+    .ticker-label { font-size: 0.58rem; letter-spacing: 1px; }
+    .ticker-val { font-size: 1.15rem; }
+    .ticker-sub { font-size: 0.6rem; }
+    .main { padding: 12px; gap: 12px; }
+    .config-bar { padding: 10px 12px; gap: 10px; }
+    .config-item { flex: 1 1 45%; }
+    .config-item input { width: 100%; min-height: 38px; font-size: 0.95rem; }
+    .selector-row { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+    .selector-item select { min-height: 44px; font-size: 0.92rem; padding: 10px 12px; }
+    .section-title { padding: 10px 12px; font-size: 0.66rem; letter-spacing: 1px; flex-wrap: wrap; }
+    .section-title .tag { font-size: 0.55rem; margin-left: 0; }
+    /* Horizontally scrollable tables with visible scroll cue */
+    .section table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+    .section table::-webkit-scrollbar { height: 6px; }
+    .section table::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    th, td { padding: 8px 10px; font-size: 0.78rem; }
+    th { font-size: 0.6rem; padding: 8px 10px; }
+    .footer { padding: 8px 12px; font-size: 0.66rem; gap: 10px; }
+    .opp-chip { font-size: 0.62rem; padding: 2px 6px; }
+    .live-badge { font-size: 0.52rem; padding: 1px 4px; }
+  }
+  @media (max-width: 420px) {
+    .ticker-bar { grid-template-columns: 1fr; }
+    .ticker-val { font-size: 1.4rem; }
+    .header-meta { width: 100%; justify-content: flex-start; }
   }
 </style>
 </head>
@@ -167,22 +216,22 @@
 <!-- Live spot ticker bar -->
 <div class="ticker-bar">
   <div class="ticker gold" id="tk-gold">
-    <div class="ticker-label">Gold ($ / troy oz)</div>
+    <div class="ticker-label">Gold ($ / troy oz) <span class="ticker-age" id="tk-gold-age">—</span></div>
     <div class="ticker-val" id="tk-gold-val">—</div>
     <div class="ticker-sub" id="tk-gold-sub">— · —</div>
   </div>
   <div class="ticker silver" id="tk-silver">
-    <div class="ticker-label">Silver ($ / troy oz)</div>
+    <div class="ticker-label">Silver ($ / troy oz) <span class="ticker-age" id="tk-silver-age">—</span></div>
     <div class="ticker-val" id="tk-silver-val">—</div>
     <div class="ticker-sub" id="tk-silver-sub">— · —</div>
   </div>
   <div class="ticker oil" id="tk-oil">
-    <div class="ticker-label">Crude Oil (WTI / Brent $ / bbl)</div>
+    <div class="ticker-label">Crude Oil (WTI / Brent $ / bbl) <span class="ticker-age" id="tk-oil-age">—</span></div>
     <div class="ticker-val" id="tk-oil-val">—</div>
     <div class="ticker-sub" id="tk-oil-sub">Spread: —</div>
   </div>
   <div class="ticker fx" id="tk-fx">
-    <div class="ticker-label">USD / INR</div>
+    <div class="ticker-label">USD / INR <span class="ticker-age" id="tk-fx-age">—</span></div>
     <div class="ticker-val" id="tk-fx-val">—</div>
     <div class="ticker-sub" id="tk-fx-sub">Augmont Firebase</div>
   </div>
@@ -283,19 +332,29 @@
   <div class="section">
     <div class="section-title">
       <span class="accent-oil">■</span> Crude Oil — Brent vs WTI Spread
-      <span class="tag" id="oil-tag">Near-term contracts · TradingView Live</span>
+      <span class="tag">Select any two contracts to compare</span>
+    </div>
+    <div class="selector-row">
+      <div class="selector-item">
+        <label>WTI (NYMEX) Contract</label>
+        <select id="oil-wti-sel" onchange="onOilSelChange()"></select>
+      </div>
+      <div class="selector-item">
+        <label>Brent (ICE) Contract</label>
+        <select id="oil-brent-sel" onchange="onOilSelChange()"></select>
+      </div>
     </div>
     <table>
       <thead>
         <tr>
-          <th>WTI Contract</th>
-          <th>Maturity</th>
           <th>WTI $/bbl</th>
-          <th>Brent Contract</th>
+          <th>Maturity</th>
           <th>Brent $/bbl</th>
+          <th>Maturity</th>
           <th>Spread $/bbl</th>
           <th>Spread %</th>
           <th>Ann. %</th>
+          <th>Days Left</th>
           <th>Opportunity</th>
         </tr>
       </thead>
@@ -322,7 +381,8 @@ const S = {
   brentBid: null, brentAsk: null,
   usdinr: null,
   // User's selected contracts (symbol keys, e.g. "MCX:GOLD1!")
-  sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null },
+  sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null, oilWti: null, oilBrent: null },
+  lastTick: { gold: 0, silver: 0, oil: 0, fx: 0 },   // per-symbol most-recent update timestamp
 };
 
 function onSelChange(metal) {
@@ -333,6 +393,11 @@ function onSelChange(metal) {
     S.sel.silverMcx   = document.getElementById('silver-mcx-sel').value;
     S.sel.silverComex = document.getElementById('silver-comex-sel').value;
   }
+  render();
+}
+function onOilSelChange() {
+  S.sel.oilWti   = document.getElementById('oil-wti-sel').value;
+  S.sel.oilBrent = document.getElementById('oil-brent-sel').value;
   render();
 }
 
@@ -384,6 +449,31 @@ function flashOnChange(elId, oldVal, newVal) {
   el.classList.add(newVal > oldVal ? 'tick-flash' : 'tick-flash-dn');
 }
 
+// Subtle pulse sweep across a ticker card when new data arrives (regardless of value change)
+function pulseTicker(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('heartbeat');
+  void el.offsetWidth;
+  el.classList.add('heartbeat');
+}
+
+// Update "last tick Xs ago" text on the ticker cards every 100ms so user sees data is alive
+setInterval(() => {
+  const now = Date.now();
+  const fmt = (ts) => {
+    if (!ts) return '—';
+    const s = (now - ts) / 1000;
+    if (s < 1) return `${Math.round(s * 1000)}ms`;
+    if (s < 10) return `${s.toFixed(1)}s`;
+    return `${Math.round(s)}s`;
+  };
+  const gAge = document.getElementById('tk-gold-age');   if (gAge) gAge.textContent = fmt(S.lastTick.gold);
+  const sAge = document.getElementById('tk-silver-age'); if (sAge) sAge.textContent = fmt(S.lastTick.silver);
+  const oAge = document.getElementById('tk-oil-age');    if (oAge) oAge.textContent = fmt(S.lastTick.oil);
+  const fAge = document.getElementById('tk-fx-age');     if (fAge) fAge.textContent = fmt(S.lastTick.fx);
+}, 100);
+
 function render() {
   const aug = S.aug;
   const dutyPct = parseFloat(document.getElementById('dutyPct').value) || 0;
@@ -403,17 +493,18 @@ function render() {
 
   document.getElementById('ratesSummary').innerHTML = `USD/INR ${usdinr ? Number(usdinr).toFixed(4) : '—'} · Duty ${dutyPct}% · Purity ${purity}`;
 
-  // ── Filter contracts to near-term (< 180 days) ────────
+  // ── Filter contracts to top 6 nearest maturities per metal per exchange ────────
   const tv = S.tv;
   const nowMs = Date.now();
-  const cutoff = nowMs + 180 * 86400e3;
   const filterBy = (metal, prefix) => Object.values(tv).filter(c => {
-    if (!c || c.close == null || c.metal !== metal) return false;
+    // Don't exclude by close - a temporarily-null value shouldn't remove the row
+    if (!c || c.metal !== metal) return false;
     const d = parseExp(c.expiration);
     if (!d) return false;
-    if (d.getTime() < nowMs || d.getTime() > cutoff) return false;
+    if (d.getTime() < nowMs) return false;
     return c.symbol.startsWith(prefix);
-  }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
+  }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0))
+    .slice(0, 8);   // top 8 nearest maturities — the major-volume contracts
 
   const goldMcx    = filterBy('gold', 'MCX:');
   const goldComex  = filterBy('gold', 'COMEX:');
@@ -441,18 +532,22 @@ function populateSelector(selectId, rows, currentValue) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
   if (!rows.length) {
-    sel.innerHTML = '<option>Waiting for data…</option>';
+    if (!sel.dataset.sig) sel.innerHTML = '<option>Waiting for data…</option>';
     return;
   }
-  // Only rebuild if list changed
-  const signature = rows.map(r => r.symbol).join(',');
-  if (sel.dataset.sig === signature) return; // no change → preserve selection
+  // Only rebuild if the list of contract symbols has actually changed
+  const signature = rows.map(r => r.symbol).sort().join(',');
+  if (sel.dataset.sig === signature) return; // no change → preserve user's selection
   sel.dataset.sig = signature;
+  // Preserve the user's current selection when rebuilding
+  const priorValue = sel.value || currentValue;
   sel.innerHTML = rows.map(r =>
     `<option value="${r.symbol}">${r.description} · ${fmtExp(r.expiration)}</option>`
   ).join('');
-  // Restore previous selection, otherwise pick the front-month (first row)
-  if (currentValue && rows.some(r => r.symbol === currentValue)) {
+  // Only default to first-row when we have no prior/current choice
+  if (priorValue && rows.some(r => r.symbol === priorValue)) {
+    sel.value = priorValue;
+  } else if (currentValue && rows.some(r => r.symbol === currentValue)) {
     sel.value = currentValue;
   } else {
     sel.value = rows[0].symbol;
@@ -511,44 +606,47 @@ function renderSelectorArb(metal, mcxRows, comexRows, opts) {
 }
 
 function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
+  const tbody = document.getElementById(tbodyId);
+  populateSelector('oil-wti-sel',   wtiRows,   S.sel.oilWti);
+  populateSelector('oil-brent-sel', brentRows, S.sel.oilBrent);
+  const wtiSel = document.getElementById('oil-wti-sel');
+  const brentSel = document.getElementById('oil-brent-sel');
+  if (wtiSel   && wtiSel.value)   S.sel.oilWti   = wtiSel.value;
+  if (brentSel && brentSel.value) S.sel.oilBrent = brentSel.value;
+
   if (!wtiRows.length || !brentRows.length) {
-    document.getElementById(tbodyId).innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for data…</td></tr>`;
     return;
   }
-  const rows = wtiRows.map(m => {
-    const mDate = parseExp(m.expiration);
-    if (!mDate) return '';
-    let best = null, bestDelta = Infinity;
-    brentRows.forEach(c => {
-      const cDate = parseExp(c.expiration);
-      if (!cDate) return;
-      const d = Math.abs(cDate - mDate);
-      if (d < bestDelta) { bestDelta = d; best = c; }
-    });
-    if (!best) return '';
-    const spread = best.close - m.close;
-    const spreadPct = (spread / m.close) * 100;
-    const days = daysTo(m.expiration);
-    const annSpread = annualize(spread, m.close, days);
-    const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
-    const chip = isOpp
-      ? `<span class="opp-chip yes">${spread > 0 ? '↑ BRENT PREM' : '↓ WTI PREM'}</span>`
-      : `<span class="opp-chip no">—</span>`;
-    const rowStyle = isOpp ? ` style="background:${spread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
-    const liveBadge = (m.live || best.live) ? '<span class="live-badge">LIVE</span>' : '';
-    return `<tr${rowStyle}>
-      <td>${m.description.split(' Futures')[0].trim()}${liveBadge}</td>
-      <td>${fmtExp(m.expiration)}</td>
-      <td class="val-oil">${USD(m.close)}</td>
-      <td style="color:var(--muted);font-size:0.78rem">${best.description.split(' Futures')[0].trim()}</td>
-      <td class="val-blue">${USD(best.close)}</td>
-      <td>${fmtDelta(spread, 'usd')}</td>
-      <td>${fmtPct(spreadPct)}</td>
-      <td>${fmtPct(annSpread)}</td>
-      <td>${chip}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById(tbodyId).innerHTML = rows || `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">No matching contracts</td></tr>`;
+  const m = wtiRows.find(r => r.symbol === S.sel.oilWti);
+  const c = brentRows.find(r => r.symbol === S.sel.oilBrent);
+  if (!m || !c) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Select both contracts…</td></tr>`;
+    return;
+  }
+  const spread = c.close - m.close;
+  const spreadPct = (spread / m.close) * 100;
+  const days = daysTo(m.expiration);
+  const annSpread = annualize(spread, m.close, days);
+  const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
+  const chip = isOpp
+    ? `<span class="opp-chip yes">${spread > 0 ? '↑ BRENT PREM' : '↓ WTI PREM'}</span>`
+    : `<span class="opp-chip no">—</span>`;
+  const rowStyle = isOpp ? ` style="background:${spread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+  const liveM = m.live ? '<span class="live-badge">LIVE</span>' : '';
+  const liveC = c.live ? '<span class="live-badge">LIVE</span>' : '';
+
+  tbody.innerHTML = `<tr${rowStyle}>
+    <td class="val-oil">${USD(m.close)}${liveM}</td>
+    <td>${fmtExp(m.expiration)}</td>
+    <td class="val-blue">${USD(c.close)}${liveC}</td>
+    <td>${fmtExp(c.expiration)}</td>
+    <td>${fmtDelta(spread, 'usd')}</td>
+    <td>${fmtPct(spreadPct)}</td>
+    <td>${fmtPct(annSpread)}</td>
+    <td>${days ?? '—'}</td>
+    <td>${chip}</td>
+  </tr>`;
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
@@ -572,11 +670,12 @@ function connectWS() {
       } else if (msg.source === 'tvspot') {
         const prev = { xau: S.xauAsk, xag: S.xagAsk, wti: S.wtiAsk, brent: S.brentAsk, fx: S.usdinr };
         S.tvspot   = msg.prices;
-        S.xauBid   = msg.prices.XAUUSD?.bid; S.xauAsk = msg.prices.XAUUSD?.ask;
-        S.xagBid   = msg.prices.XAGUSD?.bid; S.xagAsk = msg.prices.XAGUSD?.ask;
-        S.wtiBid   = msg.prices.WTI?.bid;    S.wtiAsk = msg.prices.WTI?.ask;
-        S.brentBid = msg.prices.BRENT?.bid;  S.brentAsk = msg.prices.BRENT?.ask;
-        S.usdinr   = msg.prices.USDINR?.ask ?? msg.prices.USDINR?.close;
+        const now = Date.now();
+        if (msg.prices.XAUUSD) { S.xauBid = msg.prices.XAUUSD.bid;  S.xauAsk = msg.prices.XAUUSD.ask;   S.lastTick.gold   = now; pulseTicker('tk-gold'); }
+        if (msg.prices.XAGUSD) { S.xagBid = msg.prices.XAGUSD.bid;  S.xagAsk = msg.prices.XAGUSD.ask;   S.lastTick.silver = now; pulseTicker('tk-silver'); }
+        if (msg.prices.WTI)    { S.wtiBid = msg.prices.WTI.bid;     S.wtiAsk = msg.prices.WTI.ask;     S.lastTick.oil    = now; pulseTicker('tk-oil'); }
+        if (msg.prices.BRENT)  { S.brentBid = msg.prices.BRENT.bid; S.brentAsk = msg.prices.BRENT.ask; S.lastTick.oil    = now; pulseTicker('tk-oil'); }
+        if (msg.prices.USDINR) { S.usdinr = msg.prices.USDINR.ask ?? msg.prices.USDINR.close;         S.lastTick.fx     = now; pulseTicker('tk-fx'); }
         document.getElementById('spot-update').textContent =
           new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
         flashOnChange('tk-gold-val',   prev.xau,   S.xauAsk);
