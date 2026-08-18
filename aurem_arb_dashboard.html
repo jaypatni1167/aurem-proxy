@@ -357,6 +357,61 @@
     </table>
   </div>
 
+  <!-- ─── Spot vs COMEX Futures — Cash & Carry Basis (detailed) ─── -->
+  <div class="section" id="spot-arb-section">
+    <div class="section-title">
+      <span id="spot-arb-title">Gold Spot vs COMEX Futures — Cash &amp; Carry Basis</span>
+      <span class="tag" id="spot-arb-tag">Full curve · every near-term contract</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>COMEX Contract</th>
+          <th>Maturity</th>
+          <th>Days</th>
+          <th>Futures $/oz</th>
+          <th>Spot $/oz</th>
+          <th>Basis $</th>
+          <th>Basis %</th>
+          <th>Ann. Basis %</th>
+          <th>Signal</th>
+        </tr>
+      </thead>
+      <tbody id="spot-arb-curve-tbody">
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for spot + futures data…</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Selector-based detailed view (with reverse spread analysis) -->
+    <div class="section-title" style="border-top:1px solid var(--border);">
+      <span>Selected Contract — Detailed Basis (both directions)</span>
+      <span class="tag">pick any contract above to lock in for analysis</span>
+    </div>
+    <div class="selector-row" style="grid-template-columns: 1fr;">
+      <div class="selector-item">
+        <label>COMEX Contract</label>
+        <select id="spot-arb-detail-sel" onchange="onSpotArbDetailChange()"></select>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Trade Direction</th>
+          <th>Long Leg</th>
+          <th>Short Leg</th>
+          <th>Basis $/oz</th>
+          <th>Basis %</th>
+          <th>Ann. %</th>
+          <th>Days Left</th>
+          <th>Signal</th>
+        </tr>
+      </thead>
+      <tbody id="spot-arb-detail-tbody">
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Select a contract…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
 </div>
 
 <div class="footer">
@@ -372,6 +427,8 @@ const S = {
   wtiBid: null, wtiAsk: null, wtiClose: null,
   brentBid: null, brentAsk: null, brentClose: null,
   activeMetal: 'gold',
+  sel: { spotArbDetail: null },   // user-selected contract for spot-arb detailed view
+  contractCache: {},              // persistent contract cache — never removes; adds/updates
 };
 
 function switchTab(metal) {
@@ -380,6 +437,32 @@ function switchTab(metal) {
     t.classList.toggle('active', t.dataset.metal === metal);
   });
   render();
+}
+
+function onSpotArbDetailChange() {
+  const sel = document.getElementById('spot-arb-detail-sel');
+  if (sel) S.sel.spotArbDetail = sel.value;
+  render();
+}
+
+// Persistent-selector: same pattern as main dashboard (never resets user's choice)
+function populateSelectorArb(selectId, rows, currentValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  if (!rows.length) {
+    if (!sel.dataset.sig) sel.innerHTML = '<option>Waiting for data…</option>';
+    return;
+  }
+  const signature = rows.map(r => r.symbol).sort().join(',');
+  if (sel.dataset.sig === signature) return;
+  sel.dataset.sig = signature;
+  const priorValue = sel.value || currentValue;
+  sel.innerHTML = rows.map(r =>
+    `<option value="${r.symbol}">${r.description} · ${fmtExp(r.expiration)}</option>`
+  ).join('');
+  if (priorValue && rows.some(r => r.symbol === priorValue))     sel.value = priorValue;
+  else if (currentValue && rows.some(r => r.symbol === currentValue)) sel.value = currentValue;
+  else                                                             sel.value = rows[0].symbol;
 }
 
 setInterval(() => {
@@ -689,6 +772,117 @@ function render() {
     bannerVal.textContent = bestArbAnn != null ? `Below Threshold (best ${bestArbAnn.toFixed(2)}%)` : 'No Data';
     bannerSub.innerHTML = `Threshold: ${arbThreshold}% ann. spread · Adjust in config bar`;
   }
+
+  // ── Spot vs COMEX Futures — Cash & Carry Basis (detailed) ─
+  renderSpotArbDetail(comexRows, arbThreshold);
+}
+
+// Detailed Spot vs Futures view: full curve + selector-based reverse-direction analysis.
+// Only applies to gold / silver — hidden for oil.
+function renderSpotArbDetail(comexRows, threshold) {
+  const section = document.getElementById('spot-arb-section');
+  const isOil   = S.activeMetal === 'oil';
+  if (!section) return;
+  if (isOil) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const isGold  = S.activeMetal === 'gold';
+  const spot    = isGold ? S.xauAsk : S.xagAsk;
+  const label   = isGold ? 'Gold' : 'Silver';
+  document.getElementById('spot-arb-title').textContent = `${label} Spot vs COMEX Futures — Cash & Carry Basis`;
+  document.getElementById('spot-arb-tag').textContent   = `Full curve · every near-term ${label.toLowerCase()} contract`;
+
+  // Curve table: one row per COMEX contract with basis analysis
+  const curveTbody = document.getElementById('spot-arb-curve-tbody');
+  if (!curveTbody) return;
+  if (spot == null || !comexRows.length) {
+    curveTbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Waiting for spot + futures data…</td></tr>`;
+  } else {
+    curveTbody.innerHTML = comexRows.map(c => {
+      const days   = daysTo(c.expiration);
+      const basis  = c.close - spot;
+      const bPct   = (basis / spot) * 100;
+      const annB   = annualize(basis, spot, days);
+      const isOpp  = annB != null && Math.abs(annB) >= threshold;
+      const chip   = isOpp
+        ? `<span class="opp-chip yes">${annB > 0 ? '↑ CONTANGO' : '↓ BACKWARDATION'}</span>`
+        : `<span class="opp-chip no">—</span>`;
+      const style  = isOpp ? ` style="background:${annB > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+      const live   = c.live ? '<span class="live-badge">LIVE</span>' : '';
+      return `<tr${style}>
+        <td>${c.description.split(' Futures')[0].trim()}${live}</td>
+        <td>${fmtExp(c.expiration)}</td>
+        <td>${days ?? '—'}</td>
+        <td class="val-blue">${USD(c.close)}</td>
+        <td class="val-gold">${USD(spot)}</td>
+        <td>${fmtDelta(basis, 'usd')}</td>
+        <td>${fmtPct(bPct)}</td>
+        <td>${fmtPct(annB)}</td>
+        <td>${chip}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Selector-based detailed view (with reverse-direction analysis)
+  populateSelectorArb('spot-arb-detail-sel', comexRows, S.sel.spotArbDetail);
+  const sel = document.getElementById('spot-arb-detail-sel');
+  if (sel && sel.value) S.sel.spotArbDetail = sel.value;
+
+  const detailTbody = document.getElementById('spot-arb-detail-tbody');
+  if (!detailTbody) return;
+
+  const c = comexRows.find(r => r.symbol === S.sel.spotArbDetail);
+  if (spot == null || !c) {
+    detailTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Select a contract…</td></tr>`;
+    return;
+  }
+
+  const days = daysTo(c.expiration);
+  const cName = c.description.split(' Futures')[0].trim();
+  const live  = c.live ? '<span class="live-badge">LIVE</span>' : '';
+
+  const basis    = c.close - spot;
+  const bPct     = (basis / spot) * 100;
+  const annB     = annualize(basis, spot, days);
+  const basisRev = spot - c.close;
+  const bPctRev  = (basisRev / c.close) * 100;
+  const annBRev  = annualize(basisRev, c.close, days);
+
+  const chipD = (ann) => {
+    if (ann == null) return `<span class="opp-chip no">—</span>`;
+    if (Math.abs(ann) < threshold) return `<span class="opp-chip no">below threshold</span>`;
+    return ann > 0
+      ? `<span class="opp-chip yes">▲ profitable at convergence</span>`
+      : `<span class="opp-chip no" style="border-color:var(--red);color:var(--red);background:rgba(239,68,68,0.1)">▼ loss at convergence</span>`;
+  };
+  const styleFor = (ann) => (ann != null && Math.abs(ann) >= threshold)
+    ? ` style="background:${ann > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+
+  detailTbody.innerHTML = `
+    <tr${styleFor(annB)}>
+      <td><b style="color:var(--green)">▲ Long Spot · Short Futures</b><br><span style="color:var(--muted);font-size:0.7rem">Cash-and-carry (contango decay)</span></td>
+      <td class="val-gold">Buy Spot @ ${USD(spot)}</td>
+      <td class="val-blue">Sell ${cName} @ ${USD(c.close)}${live}</td>
+      <td>${fmtDelta(basis, 'usd')}</td>
+      <td>${fmtPct(bPct)}</td>
+      <td>${fmtPct(annB)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chipD(annB)}</td>
+    </tr>
+    <tr${styleFor(annBRev)}>
+      <td><b style="color:var(--red)">▼ Long Futures · Short Spot</b><br><span style="color:var(--muted);font-size:0.7rem">Reverse basis · close-out P&L</span></td>
+      <td class="val-blue">Buy ${cName} @ ${USD(c.close)}${live}</td>
+      <td class="val-gold">Sell Spot @ ${USD(spot)}</td>
+      <td>${fmtDelta(basisRev, 'usd')}</td>
+      <td>${fmtPct(bPctRev)}</td>
+      <td>${fmtPct(annBRev)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chipD(annBRev)}</td>
+    </tr>
+  `;
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
