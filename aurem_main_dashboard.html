@@ -328,6 +328,37 @@
     </table>
   </div>
 
+  <!-- ─── Gold Spot vs COMEX Futures Arbitrage ─── -->
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-gold">■</span> Gold Spot vs COMEX Futures — Cash & Carry Basis
+      <span class="tag">Select a COMEX contract to see the basis</span>
+    </div>
+    <div class="selector-row" style="grid-template-columns: 1fr;">
+      <div class="selector-item">
+        <label>COMEX Gold Contract</label>
+        <select id="spot-arb-comex-sel" onchange="onSpotArbSelChange()"></select>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Trade Direction</th>
+          <th>Long Leg</th>
+          <th>Short Leg</th>
+          <th>Spread $/oz</th>
+          <th>Spread %</th>
+          <th>Ann. %</th>
+          <th>Days Left</th>
+          <th>Signal</th>
+        </tr>
+      </thead>
+      <tbody id="spot-arb-tbody">
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Loading spot + futures…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- ─── Oil Arbitrage ─── -->
   <div class="section">
     <div class="section-title">
@@ -347,19 +378,18 @@
     <table>
       <thead>
         <tr>
-          <th>WTI $/bbl</th>
-          <th>Maturity</th>
-          <th>Brent $/bbl</th>
-          <th>Maturity</th>
+          <th>Trade Direction</th>
+          <th>Long Leg</th>
+          <th>Short Leg</th>
           <th>Spread $/bbl</th>
           <th>Spread %</th>
           <th>Ann. %</th>
           <th>Days Left</th>
-          <th>Opportunity</th>
+          <th>Signal</th>
         </tr>
       </thead>
       <tbody id="oil-tbody">
-        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Loading oil contracts…</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Loading oil contracts…</td></tr>
       </tbody>
     </table>
   </div>
@@ -381,7 +411,7 @@ const S = {
   brentBid: null, brentAsk: null,
   usdinr: null,
   // User's selected contracts (symbol keys, e.g. "MCX:GOLD1!")
-  sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null, oilWti: null, oilBrent: null },
+  sel: { goldMcx: null, goldComex: null, silverMcx: null, silverComex: null, oilWti: null, oilBrent: null, spotArbComex: null },
   // Persistent contract cache — once we've seen a contract, keep it until it truly expires
   contractCache: {},
   lastTick: { gold: 0, silver: 0, oil: 0, fx: 0 },   // per-symbol most-recent update timestamp
@@ -400,6 +430,10 @@ function onSelChange(metal) {
 function onOilSelChange() {
   S.sel.oilWti   = document.getElementById('oil-wti-sel').value;
   S.sel.oilBrent = document.getElementById('oil-brent-sel').value;
+  render();
+}
+function onSpotArbSelChange() {
+  S.sel.spotArbComex = document.getElementById('spot-arb-comex-sel').value;
   render();
 }
 
@@ -537,8 +571,79 @@ function render() {
     priceCls: 'val-silver', selMcxKey: 'silverMcx', selComexKey: 'silverComex',
   });
 
+  // ── Render Gold Spot vs COMEX Futures ─────────────────
+  renderSpotArb(goldComex, arbThreshold);
+
   // ── Render oil arb table ──────────────────────────────
   renderOilArb('oil-tbody', wtiF, brentF, arbThreshold);
+}
+
+// Cash-and-carry basis: Gold Spot (XAUUSD) vs a chosen COMEX gold futures contract.
+// Two rows shown — normal long-spot/short-futures + reverse for close-out analysis.
+function renderSpotArb(comexRows, threshold) {
+  const tbody = document.getElementById('spot-arb-tbody');
+  if (!tbody) return;
+
+  // Populate the COMEX dropdown (uses same persistent populateSelector so selection stays put)
+  populateSelector('spot-arb-comex-sel', comexRows, S.sel.spotArbComex);
+  const sel = document.getElementById('spot-arb-comex-sel');
+  if (sel && sel.value) S.sel.spotArbComex = sel.value;
+
+  const spot = S.xauAsk;
+  const c    = comexRows.find(r => r.symbol === S.sel.spotArbComex);
+
+  if (spot == null || !c || c.close == null) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Waiting for spot + selected contract…</td></tr>`;
+    return;
+  }
+
+  const days = daysTo(c.expiration);
+  const liveBadge = c.live ? '<span class="live-badge">LIVE</span>' : '';
+
+  // Normal basis: Futures - Spot (contango is positive; carry cost captured)
+  const basis        = c.close - spot;
+  const basisPct     = (basis / spot) * 100;
+  const annBasis     = annualize(basis, spot, days);
+
+  // Reverse: Spot - Futures (close-out perspective for the opposite position)
+  const basisRev     = spot - c.close;
+  const basisPctRev  = (basisRev / c.close) * 100;
+  const annBasisRev  = annualize(basisRev, c.close, days);
+
+  const chip = (ann) => {
+    if (ann == null) return `<span class="opp-chip no">—</span>`;
+    if (Math.abs(ann) < threshold) return `<span class="opp-chip no">below threshold</span>`;
+    return ann > 0
+      ? `<span class="opp-chip yes">▲ profitable at convergence</span>`
+      : `<span class="opp-chip no" style="border-color:var(--red);color:var(--red);background:rgba(239,68,68,0.1)">▼ loss at convergence</span>`;
+  };
+  const styleFor = (ann) => (ann != null && Math.abs(ann) >= threshold)
+    ? ` style="background:${ann > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+
+  const cName = c.description.split(' Futures')[0].trim();
+
+  tbody.innerHTML = `
+    <tr${styleFor(annBasis)}>
+      <td><b style="color:var(--green)">▲ Long Spot · Short Futures</b><br><span style="color:var(--muted);font-size:0.7rem">Cash-and-carry (profits from contango decay)</span></td>
+      <td class="val-gold">Buy Spot @ ${USD(spot)}</td>
+      <td class="val-blue">Sell ${cName} @ ${USD(c.close)}${liveBadge}</td>
+      <td>${fmtDelta(basis, 'usd')}</td>
+      <td>${fmtPct(basisPct)}</td>
+      <td>${fmtPct(annBasis)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chip(annBasis)}</td>
+    </tr>
+    <tr${styleFor(annBasisRev)}>
+      <td><b style="color:var(--red)">▼ Long Futures · Short Spot</b><br><span style="color:var(--muted);font-size:0.7rem">Reverse basis (close-out P&L on the opposite side)</span></td>
+      <td class="val-blue">Buy ${cName} @ ${USD(c.close)}${liveBadge}</td>
+      <td class="val-gold">Sell Spot @ ${USD(spot)}</td>
+      <td>${fmtDelta(basisRev, 'usd')}</td>
+      <td>${fmtPct(basisPctRev)}</td>
+      <td>${fmtPct(annBasisRev)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chip(annBasisRev)}</td>
+    </tr>
+  `;
 }
 
 
@@ -635,32 +740,62 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const m = wtiRows.find(r => r.symbol === S.sel.oilWti);
   const c = brentRows.find(r => r.symbol === S.sel.oilBrent);
   if (!m || !c) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">Select both contracts…</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Select both contracts…</td></tr>`;
     return;
   }
-  const spread = c.close - m.close;
-  const spreadPct = (spread / m.close) * 100;
+  const wtiPrice   = m.close;
+  const brentPrice = c.close;
   const days = daysTo(m.expiration);
-  const annSpread = annualize(spread, m.close, days);
-  const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
-  const chip = isOpp
-    ? `<span class="opp-chip yes">${spread > 0 ? '↑ BRENT PREM' : '↓ WTI PREM'}</span>`
-    : `<span class="opp-chip no">—</span>`;
-  const rowStyle = isOpp ? ` style="background:${spread > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
   const liveM = m.live ? '<span class="live-badge">LIVE</span>' : '';
   const liveC = c.live ? '<span class="live-badge">LIVE</span>' : '';
 
-  tbody.innerHTML = `<tr${rowStyle}>
-    <td class="val-oil">${USD(m.close)}${liveM}</td>
-    <td>${fmtExp(m.expiration)}</td>
-    <td class="val-blue">${USD(c.close)}${liveC}</td>
-    <td>${fmtExp(c.expiration)}</td>
-    <td>${fmtDelta(spread, 'usd')}</td>
-    <td>${fmtPct(spreadPct)}</td>
-    <td>${fmtPct(annSpread)}</td>
-    <td>${days ?? '—'}</td>
-    <td>${chip}</td>
-  </tr>`;
+  // Normal spread (Brent - WTI) — a "buy WTI cheap, sell Brent expensive" convergence trade
+  // Positive normal spread = Brent premium (common — WTI is cheaper than Brent)
+  const spreadNormal    = brentPrice - wtiPrice;
+  const spreadPctNormal = (spreadNormal / wtiPrice) * 100;
+  const annNormal       = annualize(spreadNormal, wtiPrice, days);
+
+  // Reverse spread (WTI - Brent) — the "close-out" perspective: what if you already have
+  // the long-Brent / short-WTI position? Same magnitude, opposite sign.
+  const spreadReverse    = wtiPrice - brentPrice;
+  const spreadPctReverse = (spreadReverse / brentPrice) * 100;
+  const annReverse       = annualize(spreadReverse, brentPrice, days);
+
+  const chip = (ann) => {
+    if (ann == null) return `<span class="opp-chip no">—</span>`;
+    if (Math.abs(ann) < threshold) return `<span class="opp-chip no">below threshold</span>`;
+    return ann > 0
+      ? `<span class="opp-chip yes">▲ profitable at convergence</span>`
+      : `<span class="opp-chip no" style="border-color:var(--red);color:var(--red);background:rgba(239,68,68,0.1)">▼ loss at convergence</span>`;
+  };
+
+  const wtiName    = m.description.split(' Futures')[0].trim();
+  const brentName  = c.description.split(' Futures')[0].trim();
+  const styleFor = (ann) => (ann != null && Math.abs(ann) >= threshold)
+    ? ` style="background:${ann > 0 ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)'}"` : '';
+
+  tbody.innerHTML = `
+    <tr${styleFor(annNormal)}>
+      <td><b style="color:var(--green)">▲ Long WTI · Short Brent</b><br><span style="color:var(--muted);font-size:0.7rem">Bet: spread narrows (WTI catches up)</span></td>
+      <td class="val-oil">Buy ${wtiName} @ ${USD(wtiPrice)}${liveM}</td>
+      <td class="val-blue">Sell ${brentName} @ ${USD(brentPrice)}${liveC}</td>
+      <td>${fmtDelta(spreadNormal, 'usd')}</td>
+      <td>${fmtPct(spreadPctNormal)}</td>
+      <td>${fmtPct(annNormal)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chip(annNormal)}</td>
+    </tr>
+    <tr${styleFor(annReverse)}>
+      <td><b style="color:var(--red)">▼ Long Brent · Short WTI</b><br><span style="color:var(--muted);font-size:0.7rem">Bet: spread widens (Brent premium grows) · <i>reverse close-out</i></span></td>
+      <td class="val-blue">Buy ${brentName} @ ${USD(brentPrice)}${liveC}</td>
+      <td class="val-oil">Sell ${wtiName} @ ${USD(wtiPrice)}${liveM}</td>
+      <td>${fmtDelta(spreadReverse, 'usd')}</td>
+      <td>${fmtPct(spreadPctReverse)}</td>
+      <td>${fmtPct(annReverse)}</td>
+      <td>${days ?? '—'}</td>
+      <td>${chip(annReverse)}</td>
+    </tr>
+  `;
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
