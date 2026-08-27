@@ -281,7 +281,7 @@
           <th>Maturity</th>
           <th>Implied ₹/10g (+duty)</th>
           <th>Spread ₹/10g</th>
-          <th>Ann. %</th>
+          <th>Day High / Low</th>
           <th>Days Left</th>
           <th>Opportunity</th>
         </tr>
@@ -317,7 +317,7 @@
           <th>Maturity</th>
           <th>Implied ₹/kg (+duty)</th>
           <th>Spread ₹/kg</th>
-          <th>Ann. %</th>
+          <th>Day High / Low</th>
           <th>Days Left</th>
           <th>Opportunity</th>
         </tr>
@@ -348,7 +348,7 @@
           <th>Short Leg</th>
           <th>Spread $/oz</th>
           <th>Spread %</th>
-          <th>Ann. %</th>
+          <th>Day High / Low</th>
           <th>Days Left</th>
           <th>Signal</th>
         </tr>
@@ -383,7 +383,7 @@
           <th>Short Leg</th>
           <th>Spread $/bbl</th>
           <th>Spread %</th>
-          <th>Ann. %</th>
+          <th>Day High / Low</th>
           <th>Days Left</th>
           <th>Signal</th>
         </tr>
@@ -461,6 +461,43 @@ function daysTo(exp) {
   const diff = Math.round((d - new Date()) / 86400e3);
   return diff > 0 ? diff : null;
 }
+// Day High/Low tracker for spreads — resets nightly at 3:00am IST (during
+// the CME/ICE global 1-hour close). Persisted in localStorage across refreshes.
+function currentSessionKey() {
+  // Compute the "trading date" — before 3am IST, it's still the previous IST day's session
+  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  if (nowIST.getHours() < 3) nowIST.setDate(nowIST.getDate() - 1);
+  return nowIST.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+try {
+  const saved = JSON.parse(localStorage.getItem('aurem-spread-range') || '{}');
+  window.__spreadRangeSaved = saved;
+} catch(_) { window.__spreadRangeSaved = {}; }
+
+function updateRange(key, value) {
+  if (value == null || !isFinite(value)) return null;
+  S._spreadRange = S._spreadRange || window.__spreadRangeSaved || {};
+  const session = currentSessionKey();
+  const rec = S._spreadRange[key];
+  if (!rec || rec.session !== session) {
+    S._spreadRange[key] = { session, hi: value, lo: value };
+  } else {
+    if (value > rec.hi) rec.hi = value;
+    if (value < rec.lo) rec.lo = value;
+  }
+  // Throttled persist (every ~5s per key is fine)
+  S._rangeLastSave = S._rangeLastSave || 0;
+  if (Date.now() - S._rangeLastSave > 5000) {
+    S._rangeLastSave = Date.now();
+    try { localStorage.setItem('aurem-spread-range', JSON.stringify(S._spreadRange)); } catch(_) {}
+  }
+  return S._spreadRange[key];
+}
+function fmtRange(rec, formatter) {
+  if (!rec) return '—';
+  return `<span style="color:var(--green);font-size:0.75rem">H ${formatter(rec.hi)}</span><br><span style="color:var(--red);font-size:0.75rem">L ${formatter(rec.lo)}</span>`;
+}
+
 function annualize(prem, base, days) {
   if (base == null || !days || days <= 0) return null;
   return (prem / base) * (365 / days) * 100;
@@ -685,6 +722,9 @@ function renderSpotArb(comexRows, threshold) {
   const basisPctRev  = (basisRev / c.close) * 100;
   const annBasisRev  = annualize(basisRev, c.close, days);
 
+  const spotRangeN = updateRange(`spot-normal:${c.symbol}`,  basis);
+  const spotRangeR = updateRange(`spot-reverse:${c.symbol}`, basisRev);
+
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
     if (Math.abs(ann) < threshold) return `<span class="opp-chip no">below threshold</span>`;
@@ -704,7 +744,7 @@ function renderSpotArb(comexRows, threshold) {
       <td class="val-blue">Sell ${cName} @ ${USD(c.close)}${futTick}${liveBadge}${agoTag}</td>
       <td>${fmtDelta(basis, 'usd')}</td>
       <td>${fmtPct(basisPct)}</td>
-      <td>${fmtPct(annBasis)}</td>
+      <td>${fmtRange(spotRangeN, v => fmtDelta(v, 'usd'))}</td>
       <td>${days ?? '—'}</td>
       <td>${chip(annBasis)}</td>
     </tr>
@@ -714,7 +754,7 @@ function renderSpotArb(comexRows, threshold) {
       <td class="val-gold">Sell Spot @ ${USD(spot)}</td>
       <td>${fmtDelta(basisRev, 'usd')}</td>
       <td>${fmtPct(basisPctRev)}</td>
-      <td>${fmtPct(annBasisRev)}</td>
+      <td>${fmtRange(spotRangeR, v => fmtDelta(v, 'usd'))}</td>
       <td>${days ?? '—'}</td>
       <td>${chip(annBasisRev)}</td>
     </tr>
@@ -778,6 +818,7 @@ function renderSelectorArb(metal, mcxRows, comexRows, opts) {
   const spread = m.close - impliedINR;
   const days = daysTo(m.expiration);
   const annSpread = annualize(spread, impliedINR, days);
+  const rangeRec = updateRange(`${metal}:${m.symbol}:${c.symbol}`, spread);
   const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
   const chip = isOpp
     ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
@@ -793,7 +834,7 @@ function renderSelectorArb(metal, mcxRows, comexRows, opts) {
     <td>${fmtExp(c.expiration)}</td>
     <td>${INR(impliedINR)}</td>
     <td>${fmtDelta(spread)}</td>
-    <td>${fmtPct(annSpread)}</td>
+    <td>${fmtRange(rangeRec, v => fmtDelta(v))}</td>
     <td>${days ?? '—'}</td>
     <td>${chip}</td>
   </tr>`;
@@ -835,6 +876,8 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const spreadReverse    = wtiPrice - brentPrice;
   const spreadPctReverse = (spreadReverse / brentPrice) * 100;
   const annReverse       = annualize(spreadReverse, brentPrice, days);
+  const oilRangeN = updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
+  const oilRangeR = updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -856,7 +899,7 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
       <td class="val-blue">Sell ${brentName} @ ${USD(brentPrice)}${liveC}</td>
       <td>${fmtDelta(spreadNormal, 'usd')}</td>
       <td>${fmtPct(spreadPctNormal)}</td>
-      <td>${fmtPct(annNormal)}</td>
+      <td>${fmtRange(oilRangeN, v => fmtDelta(v, 'usd'))}</td>
       <td>${days ?? '—'}</td>
       <td>${chip(annNormal)}</td>
     </tr>
@@ -866,7 +909,7 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
       <td class="val-oil">Sell ${wtiName} @ ${USD(wtiPrice)}${liveM}</td>
       <td>${fmtDelta(spreadReverse, 'usd')}</td>
       <td>${fmtPct(spreadPctReverse)}</td>
-      <td>${fmtPct(annReverse)}</td>
+      <td>${fmtRange(oilRangeR, v => fmtDelta(v, 'usd'))}</td>
       <td>${days ?? '—'}</td>
       <td>${chip(annReverse)}</td>
     </tr>
