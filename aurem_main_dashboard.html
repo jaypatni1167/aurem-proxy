@@ -597,8 +597,16 @@ function renderSpotArb(comexRows, threshold) {
     return;
   }
 
+  // Track last-known close per symbol; flash green/red on change
+  S._futPrev = S._futPrev || {};
+  const prev = S._futPrev[c.symbol];
+  const changed = prev != null && prev !== c.close;
+  const upTick = changed && c.close > prev;
+  S._futPrev[c.symbol] = c.close;
+
   const days = daysTo(c.expiration);
   const liveBadge = c.live ? '<span class="live-badge">LIVE</span>' : '';
+  const futTick = changed ? `<span style="color:${upTick ? 'var(--green)' : 'var(--red)'};font-size:0.7rem;margin-left:4px">${upTick ? '▲' : '▼'}</span>` : '';
 
   // Normal basis: Futures - Spot (contango is positive; carry cost captured)
   const basis        = c.close - spot;
@@ -626,7 +634,7 @@ function renderSpotArb(comexRows, threshold) {
     <tr${styleFor(annBasis)}>
       <td><b style="color:var(--green)">▲ Long Spot · Short Futures</b><br><span style="color:var(--muted);font-size:0.7rem">Cash-and-carry (profits from contango decay)</span></td>
       <td class="val-gold">Buy Spot @ ${USD(spot)}</td>
-      <td class="val-blue">Sell ${cName} @ ${USD(c.close)}${liveBadge}</td>
+      <td class="val-blue">Sell ${cName} @ ${USD(c.close)}${futTick}${liveBadge}</td>
       <td>${fmtDelta(basis, 'usd')}</td>
       <td>${fmtPct(basisPct)}</td>
       <td>${fmtPct(annBasis)}</td>
@@ -635,7 +643,7 @@ function renderSpotArb(comexRows, threshold) {
     </tr>
     <tr${styleFor(annBasisRev)}>
       <td><b style="color:var(--red)">▼ Long Futures · Short Spot</b><br><span style="color:var(--muted);font-size:0.7rem">Reverse basis (close-out P&L on the opposite side)</span></td>
-      <td class="val-blue">Buy ${cName} @ ${USD(c.close)}${liveBadge}</td>
+      <td class="val-blue">Buy ${cName} @ ${USD(c.close)}${futTick}${liveBadge}</td>
       <td class="val-gold">Sell Spot @ ${USD(spot)}</td>
       <td>${fmtDelta(basisRev, 'usd')}</td>
       <td>${fmtPct(basisPctRev)}</td>

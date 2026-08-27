@@ -28,99 +28,6 @@ app.get('/', (req, res) => serveNoCache(res, findHtml('aurem_rate_dashboard.html
 app.get('/arb', (req, res) => serveNoCache(res, findHtml('aurem_arb_dashboard.html')));
 app.get('/main', (req, res) => serveNoCache(res, findHtml('aurem_main_dashboard.html')));
 
-// ── CBIC tariff/FX cache (persists across restarts) ──────────────
-const CBIC_CACHE_FILE = path.join(__dirname, 'cbic-cache.json');
-let cbicCache = { goldTariff: null, silverTariff: null, usdInr: null, dutyPct: null, notifNo: null, notifDate: null, sourceUrl: null, fetchedAt: null };
-try {
-  if (fs.existsSync(CBIC_CACHE_FILE)) {
-    cbicCache = { ...cbicCache, ...JSON.parse(fs.readFileSync(CBIC_CACHE_FILE, 'utf8')) };
-    console.log('[CBIC] Loaded cached values:', cbicCache.notifNo || '(no notif)', cbicCache.notifDate || '');
-  }
-} catch (e) { console.warn('[CBIC] Cache load failed:', e.message); }
-
-function saveCbicCache() {
-  try { fs.writeFileSync(CBIC_CACHE_FILE, JSON.stringify(cbicCache, null, 2)); } catch(_){}
-}
-
-app.get('/api/cbic', (req, res) => res.json(cbicCache));
-
-app.post('/api/cbic/manual', (req, res) => {
-  const { goldTariff, silverTariff, usdInr, dutyPct, notifNo, notifDate } = req.body || {};
-  if (goldTariff != null) cbicCache.goldTariff = +goldTariff;
-  if (silverTariff != null) cbicCache.silverTariff = +silverTariff;
-  if (usdInr != null) cbicCache.usdInr = +usdInr;
-  if (dutyPct != null) cbicCache.dutyPct = +dutyPct;
-  if (notifNo) cbicCache.notifNo = notifNo;
-  if (notifDate) cbicCache.notifDate = notifDate;
-  cbicCache.sourceUrl = 'manual';
-  cbicCache.fetchedAt = Date.now();
-  saveCbicCache();
-  broadcast({ type: 'cbic', ...cbicCache });
-  res.json({ ok: true, cache: cbicCache });
-});
-
-// Extract CBIC values from a PDF URL (tariff-value notification)
-app.post('/api/cbic/load-pdf', async (req, res) => {
-  const { url } = req.body || {};
-  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ ok: false, error: 'Invalid URL' });
-  try {
-    const pdfParse = require('pdf-parse');
-    const https = require('https');
-    const agent = new https.Agent({ rejectUnauthorized: false });
-    const r = await fetch(url, { agent, headers: { 'User-Agent': 'Mozilla/5.0 AUREM-rates' } });
-    if (!r.ok) return res.status(502).json({ ok: false, error: `Fetch ${r.status}` });
-    const buf = await r.buffer();
-    const parsed = await pdfParse(buf);
-    const text = parsed.text.replace(/\s+/g, ' ');
-
-    // Try to extract Gold tariff ($/10g) — look for gold followed by ~4 digit number
-    let goldTariff = null, silverTariff = null, usdInr = null, notifNo = null, notifDate = null;
-
-    // Notification number & date
-    const m1 = text.match(/Notification\s*No\.?\s*(\d+\/\d{4}\s*[-–]?\s*Customs[^\s,]*)/i);
-    if (m1) notifNo = m1[1].replace(/\s+/g, ' ').trim();
-    const m2 = text.match(/(\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]+,?\s*\d{4})/);
-    if (m2) notifDate = m2[1];
-
-    // Tariff-value notif format: "Gold, in any form ... 1407 per 10 grams"; "Silver ... 2097 per kilogram"
-    const goldRe = /Gold[\s\S]{0,200}?(\d{3,5})\s*(?:per\s*10\s*g|per\s*ten\s*g|\/10g|per\s*10\s*grams)/i;
-    const silverRe = /Silver[\s\S]{0,200}?(\d{3,5})\s*(?:per\s*kg|per\s*kilogram|\/kg)/i;
-    const mg = text.match(goldRe); if (mg) goldTariff = +mg[1];
-    const ms = text.match(silverRe); if (ms) silverTariff = +ms[1];
-
-    // Fallback: pull all 3-5 digit numbers near Gold/Silver keywords
-    if (!goldTariff) {
-      const nearGold = text.match(/Gold[\s\S]{0,300}/i);
-      if (nearGold) { const n = nearGold[0].match(/\b(1\d{3}|2\d{3})\b/); if (n) goldTariff = +n[1]; }
-    }
-    if (!silverTariff) {
-      const nearSilver = text.match(/Silver[\s\S]{0,300}/i);
-      if (nearSilver) { const n = nearSilver[0].match(/\b(1\d{3}|2\d{3}|3\d{3})\b/); if (n) silverTariff = +n[1]; }
-    }
-
-    // USD/INR — exchange rate notification format: "United States Dollar ... 95.06"
-    const fxRe = /United\s+States\s+Dollar[\s\S]{0,200}?(\d{2,3}\.\d{2,4})/i;
-    const mfx = text.match(fxRe); if (mfx) usdInr = +mfx[1];
-
-    if (goldTariff == null && silverTariff == null && usdInr == null) {
-      return res.status(422).json({ ok: false, error: 'Could not extract any values from PDF', textSample: text.slice(0, 500) });
-    }
-
-    if (goldTariff != null) cbicCache.goldTariff = goldTariff;
-    if (silverTariff != null) cbicCache.silverTariff = silverTariff;
-    if (usdInr != null) cbicCache.usdInr = usdInr;
-    if (notifNo) cbicCache.notifNo = notifNo;
-    if (notifDate) cbicCache.notifDate = notifDate;
-    cbicCache.sourceUrl = url;
-    cbicCache.fetchedAt = Date.now();
-    saveCbicCache();
-    broadcast({ type: 'cbic', ...cbicCache });
-    res.json({ ok: true, extracted: { goldTariff, silverTariff, usdInr, notifNo, notifDate }, cache: cbicCache });
-  } catch (e) {
-    console.error('[CBIC PDF]', e.message);
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
 
 // ── MT5 price feed via file watching ──────────────────────────
 // MT5 Files folder on Mac (Wine) — search for it
@@ -733,8 +640,8 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
     }, (r) => {
       if (r.statusCode === 429) {
         // Rate limited — back off for 5 minutes
-        tvRateLimitedUntil = Date.now() + 5 * 60 * 1000;
-        console.warn('[TV-Scanner] 429 rate limited, backing off 5 min');
+        tvRateLimitedUntil = Date.now() + 60 * 1000;
+        console.warn('[TV-Scanner] 429 rate limited, backing off 60s');
         r.resume(); return resolve('');
       }
       let data = '';
@@ -839,9 +746,6 @@ wss.on('connection', (ws) => {
   // Send current snapshot immediately on connect
   if (latestRates.augmont) {
     ws.send(JSON.stringify({ type: 'rates', ...latestRates.augmont }));
-  }
-  if (cbicCache.fetchedAt) {
-    ws.send(JSON.stringify({ type: 'cbic', ...cbicCache }));
   }
 
   ws.on('close', () => {
