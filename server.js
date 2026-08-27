@@ -624,7 +624,7 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
       { left: field, operation: op, right: matchTerm },
       { left: 'exchange', operation: 'in_range', right: exchanges }
     ],
-    columns: ['name', 'description', 'close', 'change', 'expiration', 'bid', 'ask'],
+    columns: ['name', 'description', 'close', 'change', 'expiration', 'bid', 'ask', 'volume', 'open_interest'],
     range: [0, 80]
   });
   return new Promise((resolve, reject) => {
@@ -672,7 +672,7 @@ async function fetchTradingView() {
 
     const prices = {};
     const addRow = (row, metal) => {
-      const [name, description, close, change, expiration, bid, ask] = row.d;
+      const [name, description, close, change, expiration, bid, ask, volume, open_interest] = row.d;
       // Skip variants we don't need for metals
       if (metal !== 'oil' && /PETAL|GUINEA|4GC|SGC|SGU|1OZ|SHANGHAI/.test(row.s)) return;
       const live = futuresLiveState[row.s];
@@ -686,6 +686,8 @@ async function fetchTradingView() {
         expiration,
         bid: live?.bid ?? (bid ? parseFloat(bid) : null),
         ask: live?.ask ?? (ask ? parseFloat(ask) : null),
+        volume: volume != null ? parseFloat(volume) : 0,
+        open_interest: open_interest != null ? parseFloat(open_interest) : 0,
         live: !!live,
       };
     };

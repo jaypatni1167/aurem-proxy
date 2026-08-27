@@ -826,15 +826,37 @@ function renderSpotArbDetail(comexRows, threshold) {
     }).join('');
   }
 
-  // Selector-based detailed view (with reverse-direction analysis)
-  populateSelectorArb('spot-arb-detail-sel', comexRows, S.sel.spotArbDetail);
+  // Selector-based detailed view — restrict to top-3 by volume (bigger contracts),
+  // then LOCK the list so the dropdown stops reshuffling.
+  S._lockedSpotSel = S._lockedSpotSel || {};
+  const lockKey = S.activeMetal;
+  let selectorRows;
+  if (S._lockedSpotSel[lockKey]) {
+    selectorRows = S._lockedSpotSel[lockKey].map(sym => comexRows.find(r => r.symbol === sym)).filter(Boolean);
+    if (!selectorRows.length) { delete S._lockedSpotSel[lockKey]; selectorRows = comexRows; }
+  } else {
+    const withVol = comexRows.filter(c => (c.volume || 0) > 0 || (c.open_interest || 0) > 0);
+    if (withVol.length >= 3) {
+      const ranked = withVol.sort((a, b) => {
+        const va = a.volume || 0, vb = b.volume || 0;
+        if (vb !== va) return vb - va;
+        return (b.open_interest || 0) - (a.open_interest || 0);
+      }).slice(0, 3).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
+      S._lockedSpotSel[lockKey] = ranked.map(c => c.symbol);
+      selectorRows = ranked;
+    } else {
+      selectorRows = comexRows.slice(0, 3);
+    }
+  }
+
+  populateSelectorArb('spot-arb-detail-sel', selectorRows, S.sel.spotArbDetail);
   const sel = document.getElementById('spot-arb-detail-sel');
   if (sel && sel.value) S.sel.spotArbDetail = sel.value;
 
   const detailTbody = document.getElementById('spot-arb-detail-tbody');
   if (!detailTbody) return;
 
-  const c = comexRows.find(r => r.symbol === S.sel.spotArbDetail);
+  const c = selectorRows.find(r => r.symbol === S.sel.spotArbDetail);
   if (spot == null || !c) {
     detailTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Select a contract…</td></tr>`;
     return;

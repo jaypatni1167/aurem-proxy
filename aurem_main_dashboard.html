@@ -542,16 +542,41 @@ function render() {
     };
   });
 
-  // ── Filter to top 8 nearest, non-expired contracts per metal ─────────────────────
+  // ── Filter to top 3 highest-volume, non-expired contracts per metal ───────────
+  // Then LOCK the list per (metal,exchange) so the dropdown stops reshuffling.
   const nowMs = Date.now();
-  const filterBy = (metal, prefix) => Object.values(S.contractCache).filter(c => {
-    if (!c || c.metal !== metal) return false;
-    const d = parseExp(c.expiration);
-    if (!d) return false;
-    if (d.getTime() < nowMs) return false;   // truly expired → drop from cache
-    return c.symbol.startsWith(prefix);
-  }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0))
-    .slice(0, 8);
+  S._lockedLists = S._lockedLists || {};
+  const filterBy = (metal, prefix) => {
+    const key = metal + '|' + prefix;
+    // If we already have a locked list, use it — just refresh prices from cache
+    if (S._lockedLists[key]) {
+      return S._lockedLists[key]
+        .map(sym => S.contractCache[sym])
+        .filter(c => c && parseExp(c.expiration) && parseExp(c.expiration).getTime() >= nowMs);
+    }
+    const candidates = Object.values(S.contractCache).filter(c => {
+      if (!c || c.metal !== metal) return false;
+      const d = parseExp(c.expiration);
+      if (!d || d.getTime() < nowMs) return false;
+      return c.symbol.startsWith(prefix);
+    });
+    // Only lock the list once we've seen enough contracts with volume/OI data
+    const withVolume = candidates.filter(c => (c.volume || 0) > 0 || (c.open_interest || 0) > 0);
+    if (withVolume.length < 3) {
+      // Not enough volume data yet — return nearest by expiration temporarily (don't lock)
+      return candidates.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3);
+    }
+    // Rank by volume (desc), then open interest as tiebreaker
+    const ranked = withVolume.sort((a, b) => {
+      const va = a.volume || 0, vb = b.volume || 0;
+      if (vb !== va) return vb - va;
+      return (b.open_interest || 0) - (a.open_interest || 0);
+    }).slice(0, 3);
+    // Sort by expiration for display, then LOCK
+    ranked.sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
+    S._lockedLists[key] = ranked.map(c => c.symbol);
+    return ranked;
+  };
 
   const goldMcx    = filterBy('gold', 'MCX:');
   const goldComex  = filterBy('gold', 'COMEX:');
@@ -862,6 +887,28 @@ function setStatus(live, label) {
   dot.className  = 'dot '  + (live ? 'pulse' : '');
   document.getElementById('statusLabel').textContent = label;
 }
+
+// ── Sync Duty% with the Rates page (shared localStorage 'aurem-cbic-inputs') ──
+function loadDutyFromRates() {
+  try {
+    const data = JSON.parse(localStorage.getItem('aurem-cbic-inputs') || '{}');
+    if (data['ib-duty-pct'] != null) {
+      document.getElementById('dutyPct').value = data['ib-duty-pct'];
+    }
+  } catch(_) {}
+}
+function saveDutyToRates() {
+  try {
+    const data = JSON.parse(localStorage.getItem('aurem-cbic-inputs') || '{}');
+    data['ib-duty-pct'] = document.getElementById('dutyPct').value;
+    localStorage.setItem('aurem-cbic-inputs', JSON.stringify(data));
+  } catch(_) {}
+}
+loadDutyFromRates();
+document.getElementById('dutyPct').addEventListener('input', () => { saveDutyToRates(); render(); });
+// Re-sync when tab is refocused (in case user changed it on Rates page)
+window.addEventListener('focus', loadDutyFromRates);
+window.addEventListener('storage', (e) => { if (e.key === 'aurem-cbic-inputs') { loadDutyFromRates(); render(); } });
 
 connectWS();
 
