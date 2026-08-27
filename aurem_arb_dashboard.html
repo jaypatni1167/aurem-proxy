@@ -799,7 +799,7 @@ function renderSpotArbDetail(comexRows, threshold) {
   if (comexRows.length && S.futLive) {
     const front = comexRows[0];
     const live = isGold ? S.futLive.gold : S.futLive.silver;
-    if (live != null && front && Math.abs((front.close || 0) - live) < live * 0.02) {
+    if (live != null && front && front.close != null && Math.abs(front.close - live) < live * 0.05) {
       front.close = live;
       front.live = true;
     }

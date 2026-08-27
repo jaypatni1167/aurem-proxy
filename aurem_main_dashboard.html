@@ -542,61 +542,86 @@ function render() {
     };
   });
 
-  // ── Filter to top 3 highest-volume, non-expired contracts per metal ───────────
-  // Then LOCK the list per (metal,exchange) so the dropdown stops reshuffling.
+  // ── Filter to top 3 highest-volume contracts on the PRIMARY side, then match
+  // the SECONDARY side by closest expiration so left/right pair by month.
   const nowMs = Date.now();
   S._lockedLists = S._lockedLists || {};
-  const filterBy = (metal, prefix) => {
-    const key = metal + '|' + prefix;
-    // If we already have a locked list, use it — just refresh prices from cache
-    if (S._lockedLists[key]) {
-      return S._lockedLists[key]
-        .map(sym => S.contractCache[sym])
-        .filter(c => c && parseExp(c.expiration) && parseExp(c.expiration).getTime() >= nowMs);
-    }
-    const candidates = Object.values(S.contractCache).filter(c => {
-      if (!c || c.metal !== metal) return false;
-      const d = parseExp(c.expiration);
-      if (!d || d.getTime() < nowMs) return false;
-      return c.symbol.startsWith(prefix);
-    });
-    // Only lock the list once we've seen enough contracts with volume/OI data
-    const withVolume = candidates.filter(c => (c.volume || 0) > 0 || (c.open_interest || 0) > 0);
-    if (withVolume.length < 3) {
-      // Not enough volume data yet — return nearest by expiration temporarily (don't lock)
-      return candidates.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3);
-    }
-    // Rank by volume (desc), then open interest as tiebreaker
-    const ranked = withVolume.sort((a, b) => {
+
+  const candidatesFor = (metal, prefix) => Object.values(S.contractCache).filter(c => {
+    if (!c || c.metal !== metal) return false;
+    const d = parseExp(c.expiration);
+    if (!d || d.getTime() < nowMs) return false;
+    return c.symbol.startsWith(prefix);
+  });
+
+  const pickTopByVolume = (rows, n = 3) => {
+    const withVol = rows.filter(c => (c.volume || 0) > 0 || (c.open_interest || 0) > 0);
+    if (withVol.length < n) return null; // not ready
+    return withVol.sort((a, b) => {
       const va = a.volume || 0, vb = b.volume || 0;
       if (vb !== va) return vb - va;
       return (b.open_interest || 0) - (a.open_interest || 0);
-    }).slice(0, 3);
-    // Sort by expiration for display, then LOCK
-    ranked.sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
-    S._lockedLists[key] = ranked.map(c => c.symbol);
-    return ranked;
+    }).slice(0, n).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
+  };
+  const nearestTo = (rows, targetExp) => {
+    if (!rows.length || !targetExp) return null;
+    const t = parseExp(targetExp)?.getTime();
+    if (!t) return null;
+    return rows.slice().sort((a, b) => Math.abs(parseExp(a.expiration).getTime() - t) - Math.abs(parseExp(b.expiration).getTime() - t))[0];
   };
 
-  const goldMcx    = filterBy('gold', 'MCX:');
-  const goldComex  = filterBy('gold', 'COMEX:');
-  const silvMcx    = filterBy('silver', 'MCX:');
-  const silvComex  = filterBy('silver', 'COMEX:');
-  const wtiF       = filterBy('oil', 'NYMEX:');
-  const brentF     = filterBy('oil', 'ICEEUR:');
+  // Build one paired list per metal: primary = higher-volume side; secondary matched by month
+  const buildPair = (metal, leftPrefix, rightPrefix, primary /* 'left' | 'right' */) => {
+    const key = metal + '|' + leftPrefix + '|' + rightPrefix;
+    if (S._lockedLists[key]) {
+      const { left, right } = S._lockedLists[key];
+      const resolve = arr => arr.map(sym => S.contractCache[sym])
+        .filter(c => c && parseExp(c.expiration) && parseExp(c.expiration).getTime() >= nowMs);
+      return { left: resolve(left), right: resolve(right) };
+    }
+    const leftCand  = candidatesFor(metal, leftPrefix);
+    const rightCand = candidatesFor(metal, rightPrefix);
+    const primaryRows   = primary === 'left' ? pickTopByVolume(leftCand)  : pickTopByVolume(rightCand);
+    const secondaryPool = primary === 'left' ? rightCand : leftCand;
+    if (!primaryRows) {
+      // Not ready yet — fall back to nearest-by-expiration on both sides, don't lock
+      return {
+        left:  leftCand.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3),
+        right: rightCand.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3),
+      };
+    }
+    const matched = primaryRows.map(p => nearestTo(secondaryPool, p.expiration)).filter(Boolean);
+    const left  = primary === 'left' ? primaryRows : matched;
+    const right = primary === 'left' ? matched    : primaryRows;
+    S._lockedLists[key] = { left: left.map(c => c.symbol), right: right.map(c => c.symbol) };
+    return { left, right };
+  };
+
+  // COMEX is the primary (deeper volume) for gold/silver; ICE Brent for oil.
+  const goldPair   = buildPair('gold',   'MCX:',   'COMEX:',  'right');
+  const silverPair = buildPair('silver', 'MCX:',   'COMEX:',  'right');
+  const oilPair    = buildPair('oil',    'NYMEX:', 'ICEEUR:', 'right');
+
+  const goldMcx = goldPair.left,   goldComex = goldPair.right;
+  const silvMcx = silverPair.left, silvComex = silverPair.right;
+  const wtiF    = oilPair.left,    brentF    = oilPair.right;
 
   // Overlay investing.com's continuous-front-month live tick onto the nearest COMEX contract
   // so users see sub-second price movement even when TradingView WS is blocked.
-  const patchFrontMonth = (rows, livePrice) => {
+  const patchFrontMonth = (rows, livePrice, label) => {
     if (livePrice == null || !rows.length) return;
-    const front = rows[0]; // rows sorted by expiration ascending
-    if (front && Math.abs((front.close || 0) - livePrice) < livePrice * 0.02) {
+    const front = rows[0];
+    if (!front || front.close == null) return;
+    // Accept live patch when within ±5% of the last scanner close (avoids wrong-contract mismatch)
+    if (Math.abs(front.close - livePrice) < livePrice * 0.05) {
       front.close = livePrice;
       front.live = true;
+    } else if (window.__debugLive) {
+      console.log(`[live-patch] ${label} rejected: front=${front.close} live=${livePrice}`);
     }
   };
-  patchFrontMonth(goldComex, (S.futLive || {}).gold);
-  patchFrontMonth(silvComex, (S.futLive || {}).silver);
+  patchFrontMonth(goldComex, (S.futLive || {}).gold,   'GC');
+  patchFrontMonth(silvComex, (S.futLive || {}).silver, 'SI');
 
   // ── Render gold arb selector + comparison ─────────────
   renderSelectorArb('gold', goldMcx, goldComex, {

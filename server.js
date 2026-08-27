@@ -417,6 +417,11 @@ function connectInvestingWs() {
           change: parseFloat(data.pc || 0) || 0,
           _wsFresh: true, _wsTs: Date.now(),
         };
+        // Log first tick for new futures pids so we can confirm they're streaming
+        if ((key === 'GC_LIVE' || key === 'SI_LIVE') && !spotState[key]._logged) {
+          spotState[key]._logged = true;
+          console.log(`[Investing] ✓ ${key} streaming: ${last}`);
+        }
       }
       // Broadcast on every message (real-time)
       const prices = { ...spotState };
