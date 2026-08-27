@@ -886,17 +886,19 @@ function renderSpotArbDetail(comexRows, threshold) {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
-let ws, wsTimer;
+let ws, wsTimer, lastWsMsgTs = 0;
 function connectWS() {
   clearTimeout(wsTimer);
+  try { if (ws) ws.close(); } catch(_) {}
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host  = location.host || 'localhost:3001';
   const wsURL = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${host}/ws`;
   ws = new WebSocket(wsURL);
 
-  ws.onopen = () => setStatus(true, 'Live · TradingView + Augmont');
+  ws.onopen = () => { lastWsMsgTs = Date.now(); setStatus(true, 'Live · TradingView + Augmont'); };
   let msgCount = 0, tvspotCount = 0;
   ws.onmessage = (e) => {
+    lastWsMsgTs = Date.now();
     msgCount++;
     document.getElementById('msgCounter').textContent = `${msgCount} msgs (${tvspotCount} tvspot)`;
     try {
@@ -971,6 +973,26 @@ async function fetchIntl() {
 connectWS();
 fetchIntl();
 setInterval(fetchIntl, 60000);
+
+// Watchdog: if no WS message in 20s, reconnect
+setInterval(() => {
+  const gap = Date.now() - lastWsMsgTs;
+  if (lastWsMsgTs && gap > 20000) {
+    console.warn('[WS] stale ' + gap + 'ms, reconnecting');
+    setStatus(false, 'Reconnecting…');
+    lastWsMsgTs = Date.now();
+    connectWS();
+  }
+}, 5000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const gap = Date.now() - lastWsMsgTs;
+    if (gap > 5000 || !ws || ws.readyState !== WebSocket.OPEN) {
+      lastWsMsgTs = Date.now();
+      connectWS();
+    }
+  }
+});
 
 // Force re-render every second so the Date/time ticks and calculations stay fresh
 setInterval(render, 1000);

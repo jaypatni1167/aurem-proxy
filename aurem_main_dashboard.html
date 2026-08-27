@@ -799,16 +799,18 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
-let ws, wsTimer;
+let ws, wsTimer, lastWsMsgTs = 0;
 function connectWS() {
   clearTimeout(wsTimer);
+  try { if (ws) ws.close(); } catch(_) {}
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host  = location.host || 'localhost:3001';
   const wsURL = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${host}/ws`;
   ws = new WebSocket(wsURL);
 
-  ws.onopen = () => setStatus(true, 'Live · TradingView + Augmont');
+  ws.onopen = () => { lastWsMsgTs = Date.now(); setStatus(true, 'Live · TradingView + Augmont'); };
   ws.onmessage = (e) => {
+    lastWsMsgTs = Date.now();
     try {
       const msg = JSON.parse(e.data);
       if (msg.type !== 'rates') return;
@@ -854,6 +856,29 @@ function setStatus(live, label) {
 }
 
 connectWS();
+
+// Watchdog: if no WS message in 20s, kill and reconnect
+setInterval(() => {
+  const gap = Date.now() - lastWsMsgTs;
+  if (lastWsMsgTs && gap > 20000) {
+    console.warn('[WS] stale ' + gap + 'ms, reconnecting');
+    setStatus(false, 'Reconnecting…');
+    lastWsMsgTs = Date.now();   // avoid immediate re-trigger
+    connectWS();
+  }
+}, 5000);
+
+// Page Visibility: when tab is refocused, force reconnect if data is stale
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const gap = Date.now() - lastWsMsgTs;
+    if (gap > 5000 || !ws || ws.readyState !== WebSocket.OPEN) {
+      lastWsMsgTs = Date.now();
+      connectWS();
+    }
+  }
+});
+
 // Force re-render every second so timestamps and calculations stay fresh
 // Wrap in try/catch so an error in one render doesn't kill the interval
 setInterval(() => {

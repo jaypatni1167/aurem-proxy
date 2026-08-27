@@ -738,6 +738,8 @@ const server = app.listen(PORT, () => {
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   clients.add(ws);
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   console.log(`[WS] Client connected (${clients.size} total)`);
 
   // Send current snapshot immediately on connect
@@ -750,3 +752,16 @@ wss.on('connection', (ws) => {
     console.log(`[WS] Client disconnected (${clients.size} total)`);
   });
 });
+
+// Server-side keep-alive: send ping every 25s to prevent nginx/CDN from killing idle connections
+setInterval(() => {
+  clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch(_) {}
+      clients.delete(ws);
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch(_) {}
+  });
+}, 25000);

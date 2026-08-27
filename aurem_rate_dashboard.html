@@ -625,17 +625,18 @@ function renderMyRow(key, base, prem, augRef, ariRef, unit = '') {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
-let ws, wsTimer;
+let ws, wsTimer, lastWsMsgTs = 0;
 function connectWS() {
   clearTimeout(wsTimer);
-  // Auto-detect server: use current host when served from proxy, fallback to localhost
+  try { if (ws) ws.close(); } catch(_) {}
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host  = location.host || 'localhost:3001';
   const wsURL = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${host}/ws`;
   ws = new WebSocket(wsURL);
-  ws.onopen = () => setStatus(true, 'Live · Firebase + bcast');
+  ws.onopen = () => { lastWsMsgTs = Date.now(); setStatus(true, 'Live · Firebase + bcast'); };
   let msgCount = 0;
   ws.onmessage = (e) => {
+    lastWsMsgTs = Date.now();
     msgCount++;
     document.getElementById('msgCounter').textContent = msgCount + ' msgs';
     try {
@@ -713,6 +714,26 @@ async function fetchIntl() {
 connectWS();
 fetchIntl();
 setInterval(fetchIntl, 60000);
+
+// Watchdog: reconnect WS if no messages for 20s
+setInterval(() => {
+  const gap = Date.now() - lastWsMsgTs;
+  if (lastWsMsgTs && gap > 20000) {
+    console.warn('[WS] stale ' + gap + 'ms, reconnecting');
+    setStatus(false, 'Reconnecting…');
+    lastWsMsgTs = Date.now();
+    connectWS();
+  }
+}, 5000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const gap = Date.now() - lastWsMsgTs;
+    if (gap > 5000 || !ws || ws.readyState !== WebSocket.OPEN) {
+      lastWsMsgTs = Date.now();
+      connectWS();
+    }
+  }
+});
 </script>
 </body>
 </html>
