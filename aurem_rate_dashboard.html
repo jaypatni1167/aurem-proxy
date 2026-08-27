@@ -180,6 +180,12 @@
         <input type="number" id="ib-cbic-fx" value="95.06" step="0.01" oninput="renderIndiaBullion()" style="width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--text); font-size:0.95rem; outline:none; font-variant-numeric:tabular-nums; font-weight:700;">
       </div>
     </div>
+    <div style="padding: 10px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <span style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px;">CBIC PDF URL</span>
+      <input type="text" id="cbic-pdf-url" placeholder="Paste CBIC N.T. notification PDF URL (tariff or exchange-rate)" style="flex:1; min-width:280px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 10px; color:var(--text); font-size:0.8rem; outline:none;">
+      <button onclick="loadCbicPdf()" style="background:var(--gold); color:#000; border:none; border-radius:6px; padding:7px 14px; font-size:0.75rem; font-weight:700; cursor:pointer;">Load from PDF</button>
+      <span id="cbic-status" style="font-size:0.72rem; color:var(--muted); font-variant-numeric:tabular-nums;"></span>
+    </div>
     <table>
       <thead>
         <tr>
@@ -641,6 +647,7 @@ function connectWS() {
     document.getElementById('msgCounter').textContent = msgCount + ' msgs';
     try {
       const msg = JSON.parse(e.data);
+      if (msg.type === 'cbic') { applyCbic(msg); return; }
       if (msg.type !== 'rates') return;
       // DEBUG: log a sample value
       if (msgCount % 5 === 0) {
@@ -710,6 +717,62 @@ async function fetchIntl() {
     render();
   } catch(e) { console.warn('[Intl]', e.message); }
 }
+
+// ── CBIC persistence + PDF loader ────────────────────────────
+const CBIC_INPUTS = ['ib-gold-prem','ib-silver-prem','ib-gold-tariff','ib-silver-tariff','ib-duty-pct','ib-cbic-fx'];
+function saveCbicLocal() {
+  const data = {};
+  CBIC_INPUTS.forEach(id => { const el = document.getElementById(id); if (el) data[id] = el.value; });
+  try { localStorage.setItem('aurem-cbic-inputs', JSON.stringify(data)); } catch(_) {}
+}
+function loadCbicLocal() {
+  try {
+    const data = JSON.parse(localStorage.getItem('aurem-cbic-inputs') || '{}');
+    CBIC_INPUTS.forEach(id => { const el = document.getElementById(id); if (el && data[id] != null) el.value = data[id]; });
+  } catch(_) {}
+}
+// Persist on every input change
+CBIC_INPUTS.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', saveCbicLocal);
+});
+loadCbicLocal();
+
+function applyCbic(c) {
+  // Server-sent CBIC values take priority over local (server = source of truth after PDF load)
+  if (c.goldTariff != null) document.getElementById('ib-gold-tariff').value = c.goldTariff;
+  if (c.silverTariff != null) document.getElementById('ib-silver-tariff').value = c.silverTariff;
+  if (c.usdInr != null) document.getElementById('ib-cbic-fx').value = c.usdInr;
+  if (c.dutyPct != null) document.getElementById('ib-duty-pct').value = c.dutyPct;
+  const st = document.getElementById('cbic-status');
+  if (st) {
+    const tag = c.notifNo ? `Notif ${c.notifNo}` : (c.sourceUrl === 'manual' ? 'Manual' : 'CBIC');
+    const dt = c.notifDate ? ` · ${c.notifDate}` : (c.fetchedAt ? ` · loaded ${new Date(c.fetchedAt).toLocaleDateString()}` : '');
+    st.textContent = `${tag}${dt}`;
+    st.style.color = 'var(--green)';
+  }
+  saveCbicLocal();
+  renderIndiaBullion();
+}
+
+async function loadCbicPdf() {
+  const url = document.getElementById('cbic-pdf-url').value.trim();
+  const st = document.getElementById('cbic-status');
+  if (!url) { st.textContent = 'Paste a PDF URL first'; st.style.color = 'var(--red, #e74c3c)'; return; }
+  st.textContent = 'Fetching + parsing…'; st.style.color = 'var(--muted)';
+  try {
+    const r = await fetch('/api/cbic/load-pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const j = await r.json();
+    if (!j.ok) { st.textContent = 'Error: ' + (j.error || 'unknown'); st.style.color = 'var(--red, #e74c3c)'; return; }
+    // Server will also broadcast to WS, but apply immediately
+    applyCbic(j.cache);
+  } catch (e) {
+    st.textContent = 'Network error: ' + e.message; st.style.color = 'var(--red, #e74c3c)';
+  }
+}
+
+// Fetch cached CBIC state on load
+fetch('/api/cbic').then(r => r.json()).then(c => { if (c && c.fetchedAt) applyCbic(c); }).catch(()=>{});
 
 connectWS();
 fetchIntl();
