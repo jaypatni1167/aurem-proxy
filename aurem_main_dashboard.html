@@ -585,6 +585,19 @@ function render() {
   const wtiF       = filterBy('oil', 'NYMEX:');
   const brentF     = filterBy('oil', 'ICEEUR:');
 
+  // Overlay investing.com's continuous-front-month live tick onto the nearest COMEX contract
+  // so users see sub-second price movement even when TradingView WS is blocked.
+  const patchFrontMonth = (rows, livePrice) => {
+    if (livePrice == null || !rows.length) return;
+    const front = rows[0]; // rows sorted by expiration ascending
+    if (front && Math.abs((front.close || 0) - livePrice) < livePrice * 0.02) {
+      front.close = livePrice;
+      front.live = true;
+    }
+  };
+  patchFrontMonth(goldComex, (S.futLive || {}).gold);
+  patchFrontMonth(silvComex, (S.futLive || {}).silver);
+
   // ── Render gold arb selector + comparison ─────────────
   renderSelectorArb('gold', goldMcx, goldComex, {
     gramMultiplier: 10, purity, dutyPct, usdinr, threshold: arbThreshold,
@@ -864,6 +877,10 @@ function connectWS() {
         if (msg.prices.WTI)    { S.wtiBid = msg.prices.WTI.bid;     S.wtiAsk = msg.prices.WTI.ask;     S.lastTick.oil    = now; pulseTicker('tk-oil'); }
         if (msg.prices.BRENT)  { S.brentBid = msg.prices.BRENT.bid; S.brentAsk = msg.prices.BRENT.ask; S.lastTick.oil    = now; pulseTicker('tk-oil'); }
         if (msg.prices.USDINR) { S.usdinr = msg.prices.USDINR.ask ?? msg.prices.USDINR.close;         S.lastTick.fx     = now; pulseTicker('tk-fx'); }
+        // Live-patch the FRONT-MONTH COMEX Gold/Silver contract with investing.com's continuous feed
+        S.futLive = S.futLive || {};
+        if (msg.prices.GC_LIVE && msg.prices.GC_LIVE.close != null) S.futLive.gold   = msg.prices.GC_LIVE.close;
+        if (msg.prices.SI_LIVE && msg.prices.SI_LIVE.close != null) S.futLive.silver = msg.prices.SI_LIVE.close;
         document.getElementById('spot-update').textContent =
           new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
         flashOnChange('tk-gold-val',   prev.xau,   S.xauAsk);

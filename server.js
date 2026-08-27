@@ -368,6 +368,8 @@ const INVESTING_PIDS = {
   '69':   'XAGUSD',    // Silver Spot XAG/USD
   '8849': 'WTI',       // WTI Crude Oil Futures (front, effectively spot)
   '8833': 'BRENT',     // Brent Crude Oil Futures (front, effectively spot)
+  '8830': 'GC_LIVE',   // COMEX Gold Futures — continuous front-month (real-time)
+  '8836': 'SI_LIVE',   // COMEX Silver Futures — continuous front-month (real-time)
 };
 let invWs = null;
 let invReconnectTimer = null;
