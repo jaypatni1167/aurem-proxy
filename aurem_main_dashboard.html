@@ -572,7 +572,7 @@ function render() {
 
   // Build one paired list per metal: primary = higher-volume side; secondary matched by month
   const buildPair = (metal, leftPrefix, rightPrefix, primary /* 'left' | 'right' */) => {
-    const key = metal + '|' + leftPrefix + '|' + rightPrefix;
+    const key = metal + '|' + leftPrefix + '|' + rightPrefix + '|v2';
     if (S._lockedLists[key]) {
       const { left, right } = S._lockedLists[key];
       const resolve = arr => arr.map(sym => S.contractCache[sym])
@@ -597,10 +597,10 @@ function render() {
     return { left, right };
   };
 
-  // COMEX is the primary (deeper volume) for gold/silver; ICE Brent for oil.
+  // COMEX is the primary (deeper volume) for gold/silver; WTI (NYMEX) for oil.
   const goldPair   = buildPair('gold',   'MCX:',   'COMEX:',  'right');
   const silverPair = buildPair('silver', 'MCX:',   'COMEX:',  'right');
-  const oilPair    = buildPair('oil',    'NYMEX:', 'ICEEUR:', 'right');
+  const oilPair    = buildPair('oil',    'NYMEX:', 'ICEEUR:', 'left');
 
   const goldMcx = goldPair.left,   goldComex = goldPair.right;
   const silvMcx = silverPair.left, silvComex = silverPair.right;
