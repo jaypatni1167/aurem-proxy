@@ -363,6 +363,37 @@ fetchGoldPrice();
 setInterval(fetchGoldPrice, 1000);
 
 // ── investing.com WebSocket — real-time XAU/XAG/WTI/Brent (works from all networks) ─────
+// ── Session-aware Day High/Low tracker (resets at 3:00am IST nightly) ───────
+// Persisted to disk so PM2 restarts don't erase the day's range.
+const SPREAD_RANGE_FILE = path.join(__dirname, 'spread-range.json');
+let spreadRange = {};
+try {
+  if (fs.existsSync(SPREAD_RANGE_FILE)) spreadRange = JSON.parse(fs.readFileSync(SPREAD_RANGE_FILE, 'utf8')) || {};
+} catch (_) { spreadRange = {}; }
+function currentSessionKey() {
+  const now = new Date();
+  const istMs = now.getTime() + (5.5 * 3600 * 1000) - now.getTimezoneOffset() * 60000;
+  const ist = new Date(istMs);
+  if (ist.getUTCHours() < 3) ist.setUTCDate(ist.getUTCDate() - 1);
+  return ist.toISOString().slice(0, 10);
+}
+let spreadSaveDebounce = 0;
+function updateSpread(key, value) {
+  if (value == null || !isFinite(value)) return;
+  const session = currentSessionKey();
+  const rec = spreadRange[key];
+  if (!rec || rec.session !== session) {
+    spreadRange[key] = { session, hi: value, lo: value };
+  } else {
+    if (value > rec.hi) rec.hi = value;
+    if (value < rec.lo) rec.lo = value;
+  }
+  if (Date.now() - spreadSaveDebounce > 3000) {
+    spreadSaveDebounce = Date.now();
+    try { fs.writeFileSync(SPREAD_RANGE_FILE, JSON.stringify(spreadRange)); } catch (_) {}
+  }
+}
+
 const INVESTING_PIDS = {
   '68':   'XAUUSD',    // Gold Spot XAU/USD
   '69':   'XAGUSD',    // Silver Spot XAG/USD
@@ -423,12 +454,29 @@ function connectInvestingWs() {
           console.log(`[Investing] ✓ ${key} streaming: ${last}`);
         }
       }
+      // Update session H/L for directly-computable spreads on every tick
+      const xau = spotState.XAUUSD?.close, xag = spotState.XAGUSD?.close;
+      const wti = spotState.WTI?.close, brent = spotState.BRENT?.close;
+      const gcLive = spotState.GC_LIVE?.close, siLive = spotState.SI_LIVE?.close;
+      if (brent != null && wti != null) {
+        updateSpread('oil:brent-wti:normal',  brent - wti);
+        updateSpread('oil:brent-wti:reverse', wti - brent);
+      }
+      if (gcLive != null && xau != null) {
+        updateSpread('gold:basis:normal',  gcLive - xau);
+        updateSpread('gold:basis:reverse', xau - gcLive);
+      }
+      if (siLive != null && xag != null) {
+        updateSpread('silver:basis:normal',  siLive - xag);
+        updateSpread('silver:basis:reverse', xag - siLive);
+      }
+
       // Broadcast on every message (real-time)
       const prices = { ...spotState };
       const augUsd = latestRates.augmont?.prices?.USDINR;
       if (augUsd) prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
-      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
-      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices, spreadRange };
+      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices, spreadRange });
     } catch (e) {}
   });
 
