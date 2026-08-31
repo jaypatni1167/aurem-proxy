@@ -463,6 +463,12 @@ function connectInvestingWs() {
       const xau = spotState.XAUUSD?.close, xag = spotState.XAGUSD?.close;
       const wti = spotState.WTI?.close, brent = spotState.BRENT?.close;
       const gcLive = spotState.GC_LIVE?.close, siLive = spotState.SI_LIVE?.close;
+      if (xau != null)    updateSpread('spot:XAUUSD', xau);
+      if (xag != null)    updateSpread('spot:XAGUSD', xag);
+      if (gcLive != null) updateSpread('fut:COMEX:GC_FRONT', gcLive);
+      if (siLive != null) updateSpread('fut:COMEX:SI_FRONT', siLive);
+      if (brent != null)  updateSpread('spot:BRENT', brent);
+      if (wti != null)    updateSpread('spot:WTI', wti);
       if (brent != null && wti != null) {
         updateSpread('oil:brent-wti:normal',  brent - wti);
         updateSpread('oil:brent-wti:reverse', wti - brent);
@@ -769,7 +775,25 @@ async function fetchTradingView() {
       .map(p => p.symbol);
     if (nearTerm.length) tvSubscribeMore(nearTerm);
 
-    const rates = { source: 'tradingview', timestamp: Date.now(), prices };
+    // Track daily H/L per futures symbol AND per-symbol basis vs current spot.
+    // Client can look these up regardless of which contract the user selects.
+    const spotXau = spotState.XAUUSD?.close, spotXag = spotState.XAGUSD?.close;
+    const spotWti = spotState.WTI?.close, spotBrent = spotState.BRENT?.close;
+    Object.values(prices).forEach(p => {
+      if (p.close == null) return;
+      updateSpread(`fut:${p.symbol}`, p.close);
+      // Basis vs relevant spot for gold/silver COMEX and oil legs
+      if (p.metal === 'gold' && p.symbol.startsWith('COMEX:') && spotXau != null) {
+        updateSpread(`basis:${p.symbol}:normal`,  p.close - spotXau);
+        updateSpread(`basis:${p.symbol}:reverse`, spotXau - p.close);
+      }
+      if (p.metal === 'silver' && p.symbol.startsWith('COMEX:') && spotXag != null) {
+        updateSpread(`basis:${p.symbol}:normal`,  p.close - spotXag);
+        updateSpread(`basis:${p.symbol}:reverse`, spotXag - p.close);
+      }
+    });
+
+    const rates = { source: 'tradingview', timestamp: Date.now(), prices, spreadRange };
     latestRates.tradingview = rates;
     broadcast({ type: 'rates', ...rates });
 

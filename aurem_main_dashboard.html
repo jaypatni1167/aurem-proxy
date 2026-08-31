@@ -724,9 +724,12 @@ function renderSpotArb(comexRows, threshold) {
   const basisPctRev  = (basisRev / c.close) * 100;
   const annBasisRev  = annualize(basisRev, c.close, days);
 
-  // Prefer server-tracked H/L (accurate across the full trading day, immune to browser reload)
-  const spotRangeN = (S.serverRange && S.serverRange['gold:basis:normal'])  || updateRange(`spot-normal:${c.symbol}`,  basis);
-  const spotRangeR = (S.serverRange && S.serverRange['gold:basis:reverse']) || updateRange(`spot-reverse:${c.symbol}`, basisRev);
+  // Server tracks per-symbol basis H/L on every scanner update (10s cadence).
+  // Prefer that; fall back to client-side per-contract tracking if server hasn't seen it yet.
+  const srvN = S.serverRange && S.serverRange[`basis:${c.symbol}:normal`];
+  const srvR = S.serverRange && S.serverRange[`basis:${c.symbol}:reverse`];
+  const spotRangeN = srvN || updateRange(`spot-normal:${c.symbol}`,  basis);
+  const spotRangeR = srvR || updateRange(`spot-reverse:${c.symbol}`, basisRev);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -879,9 +882,12 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const spreadReverse    = wtiPrice - brentPrice;
   const spreadPctReverse = (spreadReverse / brentPrice) * 100;
   const annReverse       = annualize(spreadReverse, brentPrice, days);
-  // Server-tracked H/L for the front-month Brent–WTI spread (accurate full day)
-  const oilRangeN = (S.serverRange && S.serverRange['oil:brent-wti:normal'])  || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
-  const oilRangeR = (S.serverRange && S.serverRange['oil:brent-wti:reverse']) || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
+  // Server H/L only applies to front-month WTI ↔ Brent. Any other pairing → client-tracked.
+  const isFrontOil = wtiRows.length && brentRows.length && wtiRows[0].symbol === m.symbol && brentRows[0].symbol === c.symbol;
+  const oilRangeN = (isFrontOil && S.serverRange && S.serverRange['oil:brent-wti:normal'])
+                      || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
+  const oilRangeR = (isFrontOil && S.serverRange && S.serverRange['oil:brent-wti:reverse'])
+                      || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
