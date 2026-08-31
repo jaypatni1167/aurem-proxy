@@ -494,7 +494,9 @@ function updateRange(key, value) {
   return S._spreadRange[key];
 }
 function fmtRange(rec, formatter) {
-  if (!rec) return '—';
+  if (!rec || rec.hi == null || rec.lo == null) return '—';
+  // Guard against a stale-session record from server (yesterday's session still cached)
+  if (rec.session && rec.session !== currentSessionKey()) return '—';
   return `<span style="color:var(--green);font-size:0.75rem">H ${formatter(rec.hi)}</span><br><span style="color:var(--red);font-size:0.75rem">L ${formatter(rec.lo)}</span>`;
 }
 

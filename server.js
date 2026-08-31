@@ -371,11 +371,16 @@ try {
   if (fs.existsSync(SPREAD_RANGE_FILE)) spreadRange = JSON.parse(fs.readFileSync(SPREAD_RANGE_FILE, 'utf8')) || {};
 } catch (_) { spreadRange = {}; }
 function currentSessionKey() {
-  const now = new Date();
-  const istMs = now.getTime() + (5.5 * 3600 * 1000) - now.getTimezoneOffset() * 60000;
-  const ist = new Date(istMs);
-  if (ist.getUTCHours() < 3) ist.setUTCDate(ist.getUTCDate() - 1);
-  return ist.toISOString().slice(0, 10);
+  // Timezone-independent: format the "now" in IST using Intl, parse the parts back.
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map(p => [p.type, p.value]));
+  const hourIST = parseInt(parts.hour, 10);
+  const d = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00Z`);
+  if (hourIST < 3) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 let spreadSaveDebounce = 0;
 function updateSpread(key, value) {
