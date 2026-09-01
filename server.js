@@ -1,7 +1,19 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const WebSocketClient = require('ws');
-const fetch = require('node-fetch');
+const nodeFetch = require('node-fetch');
+const https = require('https');
+
+// Global HTTPS agent — IPv4-only, keep-alive. Fixes Node's flaky TLS handshakes on Hostinger.
+const ipv4Agent = new https.Agent({
+  family: 4,
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 20,
+  timeout: 15000,
+});
+// Wrap node-fetch to always use the IPv4 agent unless one is already supplied
+const fetch = (url, opts = {}) => nodeFetch(url, { agent: ipv4Agent, ...opts });
 const { initializeApp } = require('firebase/app');
 const { getAuth, signInWithCustomToken } = require('firebase/auth');
 const { getDatabase, ref, onValue } = require('firebase/database');
@@ -115,9 +127,9 @@ function broadcast(data) {
 
 function httpsGet(url, headers) {
   return new Promise((resolve, reject) => {
-    const https = require('https');
     const urlObj = new URL(url);
     const options = {
+      agent: ipv4Agent,
       hostname: urlObj.hostname,
       path: urlObj.pathname + urlObj.search,
       method: 'GET',
@@ -276,8 +288,8 @@ async function fetchTvSpotHttp() {
       columns: ['close', 'bid', 'ask', 'change']
     });
     const res = await new Promise((resolve, reject) => {
-      const https = require('https');
       const req = https.request({
+        agent: ipv4Agent,
         hostname: 'scanner.tradingview.com', path: '/global/scan', method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' }
       }, (r) => { let s = ''; r.on('data', c => s += c); r.on('end', () => resolve(s)); });
@@ -324,8 +336,8 @@ setInterval(fetchTvSpotHttp, 2000);
 async function fetchGoldPrice() {
   try {
     const data = await new Promise((resolve, reject) => {
-      const https = require('https');
       const req = https.request({
+        agent: ipv4Agent,
         hostname: 'data-asg.goldprice.org', path: '/dbXRates/USD?t=' + Date.now(), method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
@@ -477,9 +489,10 @@ function connectInvestingWs() {
           change: parseFloat(data.pc || 0) || 0,
           _wsFresh: true, _wsTs: Date.now(),
         };
-        // Log first tick for new futures pids so we can confirm they're streaming
-        if ((key === 'GC_LIVE' || key === 'SI_LIVE') && !spotState[key]._logged) {
-          spotState[key]._logged = true;
+        // Log ONCE per pid on first tick
+        if ((key === 'GC_LIVE' || key === 'SI_LIVE') && !global.__firstTick?.[key]) {
+          global.__firstTick = global.__firstTick || {};
+          global.__firstTick[key] = true;
           console.log(`[Investing] ✓ ${key} streaming: ${last}`);
         }
       }
@@ -718,8 +731,8 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
     range: [0, 80]
   });
   return new Promise((resolve, reject) => {
-    const https = require('https');
     const req = https.request({
+      agent: ipv4Agent,
       hostname: 'scanner.tradingview.com',
       path: '/futures/scan',
       method: 'POST',
