@@ -501,9 +501,25 @@ function updateRange(key, value) {
 }
 function fmtRange(rec, formatter) {
   if (!rec || rec.hi == null || rec.lo == null) return '—';
-  // Guard against a stale-session record from server (yesterday's session still cached)
   if (rec.session && rec.session !== currentSessionKey()) return '—';
   return `<span style="color:var(--green);font-size:0.75rem">H ${formatter(rec.hi)}</span><br><span style="color:var(--red);font-size:0.75rem">L ${formatter(rec.lo)}</span>`;
+}
+
+// Derive a spread range from two individual-leg H/L records.
+// Spread = long_leg - short_leg. Max spread = long.hi - short.lo; Min spread = long.lo - short.hi.
+function deriveSpreadRange(longLeg, shortLeg) {
+  if (!longLeg || !shortLeg) return null;
+  if (longLeg.session && longLeg.session !== currentSessionKey()) return null;
+  if (shortLeg.session && shortLeg.session !== currentSessionKey()) return null;
+  const hi = longLeg.hi - shortLeg.lo;
+  const lo = longLeg.lo - shortLeg.hi;
+  return { session: currentSessionKey(), hi, lo };
+}
+function legRange(key) {
+  const rec = S.serverRange && S.serverRange[key];
+  if (!rec) return null;
+  if (rec.session && rec.session !== currentSessionKey()) return null;
+  return rec;
 }
 
 function annualize(prem, base, days) {
@@ -587,69 +603,24 @@ function render() {
     };
   });
 
-  // ── Filter to top 3 highest-volume contracts on the PRIMARY side, then match
-  // the SECONDARY side by closest expiration so left/right pair by month.
+  // ── Show ALL near-term contracts per metal/exchange, sorted by expiration.
+  // No volume filter — every available contract appears in the dropdown.
   const nowMs = Date.now();
-  S._lockedLists = S._lockedLists || {};
-
-  const candidatesFor = (metal, prefix) => Object.values(S.contractCache).filter(c => {
+  const CUTOFF_DAYS = 240; // ~8 months out
+  const cutoff = nowMs + CUTOFF_DAYS * 86400e3;
+  const filterBy = (metal, prefix) => Object.values(S.contractCache).filter(c => {
     if (!c || c.metal !== metal) return false;
     const d = parseExp(c.expiration);
-    if (!d || d.getTime() < nowMs) return false;
+    if (!d || d.getTime() < nowMs || d.getTime() > cutoff) return false;
     return c.symbol.startsWith(prefix);
-  });
+  }).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
 
-  const pickTopByVolume = (rows, n = 3) => {
-    const withVol = rows.filter(c => (c.volume || 0) > 0 || (c.open_interest || 0) > 0);
-    if (withVol.length < n) return null; // not ready
-    return withVol.sort((a, b) => {
-      const va = a.volume || 0, vb = b.volume || 0;
-      if (vb !== va) return vb - va;
-      return (b.open_interest || 0) - (a.open_interest || 0);
-    }).slice(0, n).sort((a, b) => (a.expiration || 0) - (b.expiration || 0));
-  };
-  const nearestTo = (rows, targetExp) => {
-    if (!rows.length || !targetExp) return null;
-    const t = parseExp(targetExp)?.getTime();
-    if (!t) return null;
-    return rows.slice().sort((a, b) => Math.abs(parseExp(a.expiration).getTime() - t) - Math.abs(parseExp(b.expiration).getTime() - t))[0];
-  };
-
-  // Build one paired list per metal: primary = higher-volume side; secondary matched by month
-  const buildPair = (metal, leftPrefix, rightPrefix, primary /* 'left' | 'right' */) => {
-    const key = metal + '|' + leftPrefix + '|' + rightPrefix + '|v2';
-    if (S._lockedLists[key]) {
-      const { left, right } = S._lockedLists[key];
-      const resolve = arr => arr.map(sym => S.contractCache[sym])
-        .filter(c => c && parseExp(c.expiration) && parseExp(c.expiration).getTime() >= nowMs);
-      return { left: resolve(left), right: resolve(right) };
-    }
-    const leftCand  = candidatesFor(metal, leftPrefix);
-    const rightCand = candidatesFor(metal, rightPrefix);
-    const primaryRows   = primary === 'left' ? pickTopByVolume(leftCand)  : pickTopByVolume(rightCand);
-    const secondaryPool = primary === 'left' ? rightCand : leftCand;
-    if (!primaryRows) {
-      // Not ready yet — fall back to nearest-by-expiration on both sides, don't lock
-      return {
-        left:  leftCand.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3),
-        right: rightCand.sort((a, b) => (a.expiration || 0) - (b.expiration || 0)).slice(0, 3),
-      };
-    }
-    const matched = primaryRows.map(p => nearestTo(secondaryPool, p.expiration)).filter(Boolean);
-    const left  = primary === 'left' ? primaryRows : matched;
-    const right = primary === 'left' ? matched    : primaryRows;
-    S._lockedLists[key] = { left: left.map(c => c.symbol), right: right.map(c => c.symbol) };
-    return { left, right };
-  };
-
-  // COMEX is the primary (deeper volume) for gold/silver; WTI (NYMEX) for oil.
-  const goldPair   = buildPair('gold',   'MCX:',   'COMEX:',  'right');
-  const silverPair = buildPair('silver', 'MCX:',   'COMEX:',  'right');
-  const oilPair    = buildPair('oil',    'NYMEX:', 'ICEEUR:', 'left');
-
-  const goldMcx = goldPair.left,   goldComex = goldPair.right;
-  const silvMcx = silverPair.left, silvComex = silverPair.right;
-  const wtiF    = oilPair.left,    brentF    = oilPair.right;
+  const goldMcx    = filterBy('gold',   'MCX:');
+  const goldComex  = filterBy('gold',   'COMEX:');
+  const silvMcx    = filterBy('silver', 'MCX:');
+  const silvComex  = filterBy('silver', 'COMEX:');
+  const wtiF       = filterBy('oil',    'NYMEX:');
+  const brentF     = filterBy('oil',    'ICEEUR:');
 
   // Overlay investing.com's continuous-front-month live tick onto the nearest COMEX contract
   // so users see sub-second price movement even when TradingView WS is blocked.
@@ -730,12 +701,13 @@ function renderSpotArb(comexRows, threshold) {
   const basisPctRev  = (basisRev / c.close) * 100;
   const annBasisRev  = annualize(basisRev, c.close, days);
 
-  // Server tracks per-symbol basis H/L on every scanner update (10s cadence).
-  // Prefer that; fall back to client-side per-contract tracking if server hasn't seen it yet.
-  const srvN = S.serverRange && S.serverRange[`basis:${c.symbol}:normal`];
-  const srvR = S.serverRange && S.serverRange[`basis:${c.symbol}:reverse`];
-  const spotRangeN = srvN || updateRange(`spot-normal:${c.symbol}`,  basis);
-  const spotRangeR = srvR || updateRange(`spot-reverse:${c.symbol}`, basisRev);
+  // Spread H/L derived from each leg's individual daily H/L (server-tracked).
+  // Normal spread = Futures - Spot → hi = fut.hi - spot.lo, lo = fut.lo - spot.hi
+  // Reverse spread = Spot - Futures → hi = spot.hi - fut.lo, lo = spot.lo - fut.hi
+  const futLeg  = legRange(`fut:${c.symbol}`) || legRange('fut:COMEX:GC_FRONT');
+  const spotLeg = legRange('spot:XAUUSD');
+  const spotRangeN = deriveSpreadRange(futLeg, spotLeg) || updateRange(`spot-normal:${c.symbol}`,  basis);
+  const spotRangeR = deriveSpreadRange(spotLeg, futLeg) || updateRange(`spot-reverse:${c.symbol}`, basisRev);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -888,12 +860,12 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const spreadReverse    = wtiPrice - brentPrice;
   const spreadPctReverse = (spreadReverse / brentPrice) * 100;
   const annReverse       = annualize(spreadReverse, brentPrice, days);
-  // Server H/L only applies to front-month WTI ↔ Brent. Any other pairing → client-tracked.
-  const isFrontOil = wtiRows.length && brentRows.length && wtiRows[0].symbol === m.symbol && brentRows[0].symbol === c.symbol;
-  const oilRangeN = (isFrontOil && S.serverRange && S.serverRange['oil:brent-wti:normal'])
-                      || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
-  const oilRangeR = (isFrontOil && S.serverRange && S.serverRange['oil:brent-wti:reverse'])
-                      || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
+  // Spread H/L from each leg's server-tracked daily H/L.
+  // Normal (Long WTI, Short Brent): spread = Brent - WTI → hi = brent.hi - wti.lo
+  const wtiLeg   = legRange(`fut:${m.symbol}`) || legRange('spot:WTI');
+  const brentLeg = legRange(`fut:${c.symbol}`) || legRange('spot:BRENT');
+  const oilRangeN = deriveSpreadRange(brentLeg, wtiLeg) || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
+  const oilRangeR = deriveSpreadRange(wtiLeg, brentLeg) || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
