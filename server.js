@@ -114,14 +114,34 @@ const db = getDatabase(firebaseApp);
 let latestRates = {};
 const clients = new Set();
 
-function broadcast(data) {
-  // Ensure every rates broadcast carries the current session H/L snapshot
-  if (data && data.type === 'rates' && data.spreadRange === undefined && typeof spreadRange !== 'undefined') {
-    data = { ...data, spreadRange };
+// Cache a compact, current-session-only H/L snapshot for broadcast (rebuilt every 2s)
+let spreadRangeSnapshot = {};
+let spreadRangeSnapshotTs = 0;
+function getSpreadRangeSnapshot() {
+  if (typeof spreadRange === 'undefined') return {};
+  if (Date.now() - spreadRangeSnapshotTs < 2000) return spreadRangeSnapshot;
+  const session = (typeof currentSessionKey === 'function') ? currentSessionKey() : null;
+  const out = {};
+  for (const [k, v] of Object.entries(spreadRange)) {
+    if (v && (!session || v.session === session)) {
+      out[k] = { session: v.session, hi: v.hi, lo: v.lo };
+    }
   }
-  const msg = JSON.stringify(data);
-  for (const client of clients) {
-    if (client.readyState === 1) client.send(msg);
+  spreadRangeSnapshot = out;
+  spreadRangeSnapshotTs = Date.now();
+  return out;
+}
+function broadcast(data) {
+  try {
+    if (data && data.type === 'rates' && data.spreadRange === undefined) {
+      data = { ...data, spreadRange: getSpreadRangeSnapshot() };
+    }
+    const msg = JSON.stringify(data);
+    for (const client of clients) {
+      if (client.readyState === 1) client.send(msg);
+    }
+  } catch (e) {
+    console.error('[broadcast] serialize error:', e.message);
   }
 }
 
