@@ -701,13 +701,9 @@ function renderSpotArb(comexRows, threshold) {
   const basisPctRev  = (basisRev / c.close) * 100;
   const annBasisRev  = annualize(basisRev, c.close, days);
 
-  // Spread H/L derived from each leg's individual daily H/L (server-tracked).
-  // Normal spread = Futures - Spot → hi = fut.hi - spot.lo, lo = fut.lo - spot.hi
-  // Reverse spread = Spot - Futures → hi = spot.hi - fut.lo, lo = spot.lo - fut.hi
-  const futLeg  = legRange(`fut:${c.symbol}`) || legRange('fut:COMEX:GC_FRONT');
-  const spotLeg = legRange('spot:XAUUSD');
-  const spotRangeN = deriveSpreadRange(futLeg, spotLeg) || updateRange(`spot-normal:${c.symbol}`,  basis);
-  const spotRangeR = deriveSpreadRange(spotLeg, futLeg) || updateRange(`spot-reverse:${c.symbol}`, basisRev);
+  // Direct spread H/L: server records the actual spread value on every tick.
+  const spotRangeN = legRange(`basis:${c.symbol}:normal`)  || updateRange(`spot-normal:${c.symbol}`,  basis);
+  const spotRangeR = legRange(`basis:${c.symbol}:reverse`) || updateRange(`spot-reverse:${c.symbol}`, basisRev);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -860,12 +856,9 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const spreadReverse    = wtiPrice - brentPrice;
   const spreadPctReverse = (spreadReverse / brentPrice) * 100;
   const annReverse       = annualize(spreadReverse, brentPrice, days);
-  // Spread H/L from each leg's server-tracked daily H/L.
-  // Normal (Long WTI, Short Brent): spread = Brent - WTI → hi = brent.hi - wti.lo
-  const wtiLeg   = legRange(`fut:${m.symbol}`) || legRange('spot:WTI');
-  const brentLeg = legRange(`fut:${c.symbol}`) || legRange('spot:BRENT');
-  const oilRangeN = deriveSpreadRange(brentLeg, wtiLeg) || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
-  const oilRangeR = deriveSpreadRange(wtiLeg, brentLeg) || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
+  // Direct spread H/L — spread value tracked on every tick.
+  const oilRangeN = legRange(`oil:${m.symbol}:${c.symbol}:normal`)  || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
+  const oilRangeR = legRange(`oil:${m.symbol}:${c.symbol}:reverse`) || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;

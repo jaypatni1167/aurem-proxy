@@ -799,14 +799,14 @@ async function fetchTradingView() {
       .map(p => p.symbol);
     if (nearTerm.length) tvSubscribeMore(nearTerm);
 
-    // Track daily H/L per futures symbol AND per-symbol basis vs current spot.
-    // Client can look these up regardless of which contract the user selects.
+    // Track daily H/L per futures symbol, per-symbol basis vs spot, AND every WTI×Brent pair.
     const spotXau = spotState.XAUUSD?.close, spotXag = spotState.XAGUSD?.close;
-    const spotWti = spotState.WTI?.close, spotBrent = spotState.BRENT?.close;
+    const oilRows = Object.values(prices).filter(p => p.metal === 'oil' && p.close != null);
+    const wtiRows   = oilRows.filter(p => p.symbol.startsWith('NYMEX:'));
+    const brentRows = oilRows.filter(p => p.symbol.startsWith('ICEEUR:'));
     Object.values(prices).forEach(p => {
       if (p.close == null) return;
       updateSpread(`fut:${p.symbol}`, p.close);
-      // Basis vs relevant spot for gold/silver COMEX and oil legs
       if (p.metal === 'gold' && p.symbol.startsWith('COMEX:') && spotXau != null) {
         updateSpread(`basis:${p.symbol}:normal`,  p.close - spotXau);
         updateSpread(`basis:${p.symbol}:reverse`, spotXau - p.close);
@@ -816,6 +816,11 @@ async function fetchTradingView() {
         updateSpread(`basis:${p.symbol}:reverse`, spotXag - p.close);
       }
     });
+    // Every WTI × Brent contract pair (so any user selection has server-tracked H/L)
+    wtiRows.forEach(w => brentRows.forEach(b => {
+      updateSpread(`oil:${w.symbol}:${b.symbol}:normal`,  b.close - w.close);
+      updateSpread(`oil:${w.symbol}:${b.symbol}:reverse`, w.close - b.close);
+    }));
 
     const rates = { source: 'tradingview', timestamp: Date.now(), prices, spreadRange };
     latestRates.tradingview = rates;
