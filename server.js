@@ -103,6 +103,10 @@ let latestRates = {};
 const clients = new Set();
 
 function broadcast(data) {
+  // Ensure every rates broadcast carries the current session H/L snapshot
+  if (data && data.type === 'rates' && data.spreadRange === undefined && typeof spreadRange !== 'undefined') {
+    data = { ...data, spreadRange };
+  }
   const msg = JSON.stringify(data);
   for (const client of clients) {
     if (client.readyState === 1) client.send(msg);
@@ -388,16 +392,36 @@ function updateSpread(key, value) {
   const session = currentSessionKey();
   const rec = spreadRange[key];
   if (!rec || rec.session !== session) {
-    spreadRange[key] = { session, hi: value, lo: value };
+    spreadRange[key] = { session, hi: value, lo: value, samples: 1, startedAt: Date.now() };
   } else {
     if (value > rec.hi) rec.hi = value;
     if (value < rec.lo) rec.lo = value;
+    rec.samples = (rec.samples || 0) + 1;
   }
   if (Date.now() - spreadSaveDebounce > 3000) {
     spreadSaveDebounce = Date.now();
     try { fs.writeFileSync(SPREAD_RANGE_FILE, JSON.stringify(spreadRange)); } catch (_) {}
   }
 }
+
+// Purge stale-session records on startup so we don't broadcast yesterday's H/L
+(() => {
+  const sess = currentSessionKey();
+  let removed = 0;
+  for (const k of Object.keys(spreadRange)) {
+    if (spreadRange[k].session !== sess) { delete spreadRange[k]; removed++; }
+  }
+  if (removed) console.log(`[H/L] Purged ${removed} stale-session records on startup`);
+})();
+
+// Manual reset endpoint — hit /api/reset-hl to wipe today's H/L (for debugging)
+app.post('/api/reset-hl', (req, res) => {
+  spreadRange = {};
+  try { fs.writeFileSync(SPREAD_RANGE_FILE, '{}'); } catch (_) {}
+  broadcast({ type: 'rates', source: 'system', timestamp: Date.now(), prices: {}, spreadRange });
+  res.json({ ok: true });
+});
+app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), spreadRange }));
 
 const INVESTING_PIDS = {
   '68':   'XAUUSD',    // Gold Spot XAU/USD

@@ -464,10 +464,16 @@ function daysTo(exp) {
 // Day High/Low tracker for spreads — resets nightly at 3:00am IST (during
 // the CME/ICE global 1-hour close). Persisted in localStorage across refreshes.
 function currentSessionKey() {
-  // Compute the "trading date" — before 3am IST, it's still the previous IST day's session
-  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  if (nowIST.getHours() < 3) nowIST.setDate(nowIST.getDate() - 1);
-  return nowIST.toISOString().slice(0, 10); // YYYY-MM-DD
+  // Timezone-independent: format now in IST, roll back to previous day if before 3am IST
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date()).map(p => [p.type, p.value]));
+  const hourIST = parseInt(parts.hour, 10);
+  const d = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00Z`);
+  if (hourIST < 3) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 try {
   const saved = JSON.parse(localStorage.getItem('aurem-spread-range') || '{}');
@@ -942,6 +948,8 @@ function connectWS() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type !== 'rates') return;
+      // Server-authoritative session H/L (arrives in EVERY rate message that has it)
+      if (msg.spreadRange) S.serverRange = msg.spreadRange;
       if (msg.source === 'augmont') {
         S.aug = msg.prices;
         document.getElementById('aug-update').textContent =
