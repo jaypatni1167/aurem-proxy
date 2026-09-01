@@ -404,7 +404,16 @@ setInterval(fetchGoldPrice, 1000);
 const SPREAD_RANGE_FILE = path.join(__dirname, 'spread-range.json');
 let spreadRange = {};
 try {
-  if (fs.existsSync(SPREAD_RANGE_FILE)) spreadRange = JSON.parse(fs.readFileSync(SPREAD_RANGE_FILE, 'utf8')) || {};
+  if (fs.existsSync(SPREAD_RANGE_FILE)) {
+    const stat = fs.statSync(SPREAD_RANGE_FILE);
+    // If the persisted file is > 5MB, assume it's corrupted/bloated and start fresh
+    if (stat.size > 5 * 1024 * 1024) {
+      console.warn(`[H/L] Persisted file too large (${(stat.size/1024/1024).toFixed(1)}MB), discarding`);
+      fs.unlinkSync(SPREAD_RANGE_FILE);
+    } else {
+      spreadRange = JSON.parse(fs.readFileSync(SPREAD_RANGE_FILE, 'utf8')) || {};
+    }
+  }
 } catch (_) { spreadRange = {}; }
 function currentSessionKey() {
   // Timezone-independent: format the "now" in IST using Intl, parse the parts back.
@@ -849,8 +858,11 @@ async function fetchTradingView() {
         updateSpread(`basis:${p.symbol}:reverse`, spotXag - p.close);
       }
     });
-    // Every WTI × Brent contract pair (so any user selection has server-tracked H/L)
-    wtiRows.forEach(w => brentRows.forEach(b => {
+    // Only track the nearest 4 WTI × 4 Brent (16 pairs) to avoid key explosion
+    const sortByExp = (a, b) => (a.expiration || 0).toString().localeCompare((b.expiration || 0).toString());
+    const wtiNear   = wtiRows.slice().sort(sortByExp).slice(0, 4);
+    const brentNear = brentRows.slice().sort(sortByExp).slice(0, 4);
+    wtiNear.forEach(w => brentNear.forEach(b => {
       updateSpread(`oil:${w.symbol}:${b.symbol}:normal`,  b.close - w.close);
       updateSpread(`oil:${w.symbol}:${b.symbol}:reverse`, w.close - b.close);
     }));
