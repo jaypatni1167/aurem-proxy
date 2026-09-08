@@ -131,10 +131,15 @@ function getSpreadRangeSnapshot() {
   spreadRangeSnapshotTs = Date.now();
   return out;
 }
+// Only include spreadRange in a broadcast at most every 5s (still real-time enough for a daily H/L)
+let lastSpreadBroadcast = 0;
 function broadcast(data) {
   try {
     if (data && data.type === 'rates' && data.spreadRange === undefined) {
-      data = { ...data, spreadRange: getSpreadRangeSnapshot() };
+      if (Date.now() - lastSpreadBroadcast > 5000) {
+        lastSpreadBroadcast = Date.now();
+        data = { ...data, spreadRange: getSpreadRangeSnapshot() };
+      }
     }
     const msg = JSON.stringify(data);
     for (const client of clients) {
@@ -459,7 +464,7 @@ function updateSpread(key, value) {
 app.post('/api/reset-hl', (req, res) => {
   spreadRange = {};
   try { fs.writeFileSync(SPREAD_RANGE_FILE, '{}'); } catch (_) {}
-  broadcast({ type: 'rates', source: 'system', timestamp: Date.now(), prices: {}, spreadRange });
+  broadcast({ type: 'rates', source: 'system', timestamp: Date.now(), prices: {} });
   res.json({ ok: true });
 });
 app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), spreadRange }));
@@ -552,8 +557,8 @@ function connectInvestingWs() {
       const prices = { ...spotState };
       const augUsd = latestRates.augmont?.prices?.USDINR;
       if (augUsd) prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
-      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices, spreadRange };
-      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices, spreadRange });
+      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
+      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
     } catch (e) {}
   });
 
@@ -867,7 +872,7 @@ async function fetchTradingView() {
       updateSpread(`oil:${w.symbol}:${b.symbol}:reverse`, w.close - b.close);
     }));
 
-    const rates = { source: 'tradingview', timestamp: Date.now(), prices, spreadRange };
+    const rates = { source: 'tradingview', timestamp: Date.now(), prices };
     latestRates.tradingview = rates;
     broadcast({ type: 'rates', ...rates });
 
