@@ -305,6 +305,46 @@ async function fetchArihant() {
 fetchArihant();
 setInterval(fetchArihant, 5000);
 
+// ── Aurem Bullion (Chirayu VOTS — same platform as Arihant) ─────────────
+function parseAuremData(raw) {
+  const prices = {};
+  raw.trim().split('\n').forEach(line => {
+    const parts = line.trim().split('\t').map(s => s.trim());
+    if (parts.length < 4) return;
+    // Aurem column order: (empty)/id, name, buy, sell, high, low
+    const [, name, buy, sell, high, low] = parts;
+    if (!name) return;
+    const key = name.toUpperCase().replace(/\s+/g, '_').replace(/[()₹$]/g, '');
+    prices[key] = {
+      name: name.trim(),
+      buy:  parseFloat(String(buy).replace(/,/g, ''))  || 0,
+      sell: parseFloat(String(sell).replace(/,/g, '')) || 0,
+      high: parseFloat(String(high).replace(/,/g, '')) || 0,
+      low:  parseFloat(String(low).replace(/,/g, ''))  || 0,
+    };
+  });
+  return prices;
+}
+async function fetchAurem() {
+  try {
+    const base = 'https://bcast.aurembullion.com:7768/VOTSBroadcastStreaming/Services/xml/GetLiveRateByTemplateID/';
+    const [g, s, c] = await Promise.all([
+      httpsGet(base + 'aurem',       { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://aurembullion.com/' }),
+      httpsGet(base + 'auremsilver', { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://aurembullion.com/' }),
+      httpsGet(base + 'auremcoin',   { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://aurembullion.com/' }),
+    ]);
+    const merged = { ...parseAuremData(g.body), ...parseAuremData(s.body), ...parseAuremData(c.body) };
+    if (!Object.keys(merged).length) return;
+    const rates = { source: 'aurem', timestamp: Date.now(), prices: merged };
+    latestRates.aurem = rates;
+    broadcast({ type: 'rates', ...rates });
+  } catch (e) {
+    console.error('[Aurem] Fetch error:', e.message);
+  }
+}
+fetchAurem();
+setInterval(fetchAurem, 5000);
+
 // ── HTTP fallback for spot prices (works even where WS is blocked) ─────
 async function fetchTvSpotHttp() {
   try {
@@ -469,6 +509,7 @@ app.post('/api/reset-hl', (req, res) => {
 });
 app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), spreadRange }));
 app.get('/api/arihant', (req, res) => res.json(latestRates.arihant || { error: 'no data yet' }));
+app.get('/api/aurem',   (req, res) => res.json(latestRates.aurem   || { error: 'no data yet' }));
 
 const INVESTING_PIDS = {
   '68':   'XAUUSD',    // Gold Spot XAU/USD

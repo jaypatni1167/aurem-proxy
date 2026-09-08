@@ -479,17 +479,32 @@ function renderDealerTables() {
   const ariGoldCost   = pickRate(findLoose(ari, 'GOLD', 'COST'));
   const ariSilverCost = pickRate(findLoose(ari, 'SILVER', 'COST'));
 
-  // ── Gold table rows — Arihant only ──────────────────────
+  // Aurem Bullion products (from aurembullion.com feed)
+  const aurem = S.aurem || {};
+  const auGold995     = pickRate(findLoose(aurem, 'GOLD', '995'));
+  const auGoldFut     = pickRate(findLoose(aurem, 'GOLD', 'FUTURE'));
+  const auGoldCoin10  = pickRate(findLoose(aurem, 'GOLD', 'COIN', '10'));
+  const auSilverFut   = pickRate(findLoose(aurem, 'SILVER', 'FUTURE'));
+  const auSilver999   = pickRate(findLoose(aurem, 'SILVER', '999') || findLoose(aurem, 'SILVER', 'PETI'));
+  const auSilverPeti  = pickRate(findLoose(aurem, 'SILVER', 'PETI', '30'));
+
+  // ── Gold table rows ─────────────────────────────────────
   const goldRows = [
     { dealer: 'Arihant', product: 'Gold 999 · 100g IND-BIS T+0',     rate: ariGold999 },
     { dealer: 'Arihant', product: 'Gold 995 · 1kg IND-BIS T+0',      rate: ariGold995 },
     { dealer: 'Arihant', product: 'Gold Cost (Ari MCX)',              rate: ariGoldCost },
+    { dealer: 'Aurem',   product: 'Gold 995 (₹/10g)',                 rate: auGold995 },
+    { dealer: 'Aurem',   product: 'Gold Future (Aurem MCX)',          rate: auGoldFut },
+    { dealer: 'Aurem',   product: 'Gold Coin 10g',                    rate: auGoldCoin10 },
   ];
 
-  // ── Silver table rows (all ₹/kg) — Arihant only ─────────
+  // ── Silver table rows (all ₹/kg) ────────────────────────
   const silverRows = [
     { dealer: 'Arihant', product: 'Silver 999 · Imported 30kg T+0',  rate: ariSilver30kg },
     { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',         rate: ariSilverCost },
+    { dealer: 'Aurem',   product: 'Silver 999 (₹/kg)',                rate: auSilver999 },
+    { dealer: 'Aurem',   product: 'Silver Peti 30kg T+1',             rate: auSilverPeti },
+    { dealer: 'Aurem',   product: 'Silver Future (Aurem MCX)',        rate: auSilverFut },
   ];
 
   document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, '');
@@ -502,9 +517,10 @@ function renderDealerRows(rows, mcx, bank, unit) {
     const rate = r.rate;
     const vsMcx  = (rate != null && mcx  != null) ? simpleDiff(rate - mcx)  : '—';
     const vsBank = (rate != null && bank != null) ? simpleDiff(rate - bank) : '—';
-    const cls = 'val-blue';
+    const dealerColor = r.dealer === 'Aurem' ? 'var(--gold)' : 'var(--blue)';
+    const cls = r.dealer === 'Aurem' ? 'val-gold' : 'val-blue';
     return `<tr>
-      <td><b style="color:var(--blue);">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
+      <td><b style="color:${dealerColor};">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
       <td class="${cls}">${rate != null ? INR(rate) + unit : '—'}</td>
       <td class="val-orange">${mcx  != null ? INR(mcx)  + unit : '—'}</td>
       <td>${vsMcx}</td>
@@ -635,6 +651,8 @@ function connectWS() {
         S.ari = msg.prices;
         document.getElementById('ari-update').textContent =
           new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+      } else if (msg.source === 'aurem') {
+        S.aurem = msg.prices;
       } else if (msg.source === 'tvspot') {
         // Spot prices from investing.com / goldprice.org
         if (msg.prices.XAUUSD) { S.xauBid = msg.prices.XAUUSD.bid; S.xauAsk = msg.prices.XAUUSD.ask; }
