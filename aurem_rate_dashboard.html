@@ -626,9 +626,7 @@ function connectWS() {
         if (msg.source === 'mt5') console.log('[MT5]', msg.prices['XAUUSD']?.sell);
       }
       if (msg.source === 'augmont') {
-        S.aug = msg.prices;
-        document.getElementById('aug-update').textContent =
-          new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+        S.aug = msg.prices;  // silently kept as internal fallback; no UI update
       } else if (msg.source === 'arihant') {
         S.ari = msg.prices;
         document.getElementById('ari-update').textContent =
