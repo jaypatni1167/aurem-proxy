@@ -337,11 +337,27 @@ function chip(diff, format = 'inr') {
   return `<span class="chip zero">At MCX</span>`;
 }
 
-function simpleDiff(diff) {
+function simpleDiff(diff, unit) {
   if (diff == null) return '—';
   const cls = diff > 0 ? 'prem' : diff < 0 ? 'disc' : 'zero';
   const sign = diff > 0 ? '+' : diff < 0 ? '−' : '';
-  return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>`;
+  // Optional $/oz equivalent — needs {unit:'10g'|'kg', fx:number}
+  let usdLine = '';
+  if (unit && unit.fx > 0) {
+    // Convert INR delta to $/oz
+    let usdPerOz;
+    if (unit.type === '10g') {
+      // ₹ per 10g → $/oz : (INR ÷ 10 × 31.1035) / fx
+      usdPerOz = (diff / 10 * 31.1035) / unit.fx;
+    } else if (unit.type === 'kg') {
+      // ₹ per kg → $/oz : (INR ÷ 1000 × 31.1035) / fx
+      usdPerOz = (diff / 1000 * 31.1035) / unit.fx;
+    }
+    if (usdPerOz != null && isFinite(usdPerOz)) {
+      usdLine = `<br><span style="font-size:0.68rem;color:var(--muted);font-weight:500">${sign}$${Math.abs(usdPerOz).toFixed(2)}/oz</span>`;
+    }
+  }
+  return `<span class="chip ${cls}">${sign}${INR(Math.abs(diff))}</span>${usdLine}`;
 }
 
 // India Bullion Bank Rate — CBIC formula (Tariff Value based)
@@ -388,7 +404,9 @@ function renderIndiaBullion() {
   const mcxG = (findLoose(S.ari || {}, 'GOLD', 'COST')?.sell)      ?? S.aug?.['GOLDMUMT+2']?.sell ?? S.aug?.['GOLDMUM1KG995']?.sell ?? null;
   const mcxS = (findLoose(S.ari || {}, 'SILVER', 'COST')?.sell)    ?? S.aug?.['SILMUMT+2']?.sell ?? null;
 
-  const diff = (a, b) => (a == null || b == null) ? '—' : simpleDiff(a - b);
+  const diff = (a, b, unit) => (a == null || b == null) ? '—' : simpleDiff(a - b, unit);
+  const goldUnit   = { type: '10g', fx: liveFx };
+  const silverUnit = { type: 'kg',  fx: liveFx };
   const inr = v => v != null ? INR(v) : '—';
   const usd = v => v != null ? USD(v) : '—';
 
@@ -404,7 +422,7 @@ function renderIndiaBullion() {
       <td style="color:var(--muted)">${dutyCell(dutyG)}</td>
       <td class="val-gold">${inr(bankG)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxG)}</td>
-      <td>${diff(bankG, mcxG)}</td>
+      <td>${diff(bankG, mcxG, goldUnit)}</td>
     </tr>
     <tr>
       <td><b style="color:var(--silver)">Silver</b><br><span style="color:var(--muted);font-size:0.7rem">₹/kg</span></td>
@@ -414,7 +432,7 @@ function renderIndiaBullion() {
       <td style="color:var(--muted)">${dutyCell(dutyS)}</td>
       <td class="val-silver">${inr(bankS)}</td>
       <td style="color:var(--orange);font-weight:700">${inr(mcxS)}</td>
-      <td>${diff(bankS, mcxS)}</td>
+      <td>${diff(bankS, mcxS, silverUnit)}</td>
     </tr>
   `;
 }
@@ -508,24 +526,25 @@ function renderDealerTables() {
     { dealer: 'Aurem',   product: 'Silver Future (Aurem MCX)',        rate: auSilverFut },
   ];
 
-  document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, '');
-  document.getElementById('silver-dealer-tbody').innerHTML = renderDealerRows(silverRows, silvMcx, bankS, '');
+  const liveFx = S.ari?.['USD_INR']?.buy ?? S.aug?.['USDINR']?.buy ?? null;
+  document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, { type: '10g', fx: liveFx });
+  document.getElementById('silver-dealer-tbody').innerHTML = renderDealerRows(silverRows, silvMcx, bankS, { type: 'kg',  fx: liveFx });
 }
 
 function renderDealerRows(rows, mcx, bank, unit) {
   if (!rows.length) return `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No data yet…</td></tr>`;
   return rows.map(r => {
     const rate = r.rate;
-    const vsMcx  = (rate != null && mcx  != null) ? simpleDiff(rate - mcx)  : '—';
-    const vsBank = (rate != null && bank != null) ? simpleDiff(rate - bank) : '—';
+    const vsMcx  = (rate != null && mcx  != null) ? simpleDiff(rate - mcx,  unit) : '—';
+    const vsBank = (rate != null && bank != null) ? simpleDiff(rate - bank, unit) : '—';
     const dealerColor = r.dealer === 'Aurem' ? 'var(--gold)' : 'var(--blue)';
     const cls = r.dealer === 'Aurem' ? 'val-gold' : 'val-blue';
     return `<tr>
       <td><b style="color:${dealerColor};">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
-      <td class="${cls}">${rate != null ? INR(rate) + unit : '—'}</td>
-      <td class="val-orange">${mcx  != null ? INR(mcx)  + unit : '—'}</td>
+      <td class="${cls}">${rate != null ? INR(rate) : '—'}</td>
+      <td class="val-orange">${mcx  != null ? INR(mcx)  : '—'}</td>
       <td>${vsMcx}</td>
-      <td class="val-green">${bank != null ? INR(bank) + unit : '—'}</td>
+      <td class="val-green">${bank != null ? INR(bank) : '—'}</td>
       <td>${vsBank}</td>
     </tr>`;
   }).join('');
