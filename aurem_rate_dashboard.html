@@ -355,7 +355,7 @@ function renderIndiaBullion() {
 
   const spotG = S.xauAsk;
   const spotS = S.xagAsk;
-  const liveFx = S.ari?.['USDINR']?.buy ?? S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+  const liveFx = S.ari?.['USD_INR']?.buy ?? S.ari?.['USDINR']?.buy ?? S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
   const cbicFx = parseFloat(document.getElementById('ib-cbic-fx').value) || liveFx || 0;
   // Show live FX in the input row
   const liveFxEl = document.getElementById('ib-live-fx');
