@@ -434,16 +434,17 @@ function render() {
 
   const augFx = aug['USDINR'];
   const ariFx = ari['USD_INR'];
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   if (augFx) {
-    document.getElementById('aug-usd-buy').textContent  = '₹' + Number(augFx.buy).toFixed(4);
-    document.getElementById('aug-usd-sell').textContent = '₹' + Number(augFx.sell).toFixed(4);
+    setTxt('aug-usd-buy',  '₹' + Number(augFx.buy).toFixed(4));
+    setTxt('aug-usd-sell', '₹' + Number(augFx.sell).toFixed(4));
   }
   if (ariFx) {
-    document.getElementById('ari-usd-buy').textContent  = '₹' + Number(ariFx.buy).toFixed(4);
-    document.getElementById('ari-usd-sell').textContent = '₹' + Number(ariFx.sell).toFixed(4);
+    setTxt('ari-usd-buy',  '₹' + Number(ariFx.buy).toFixed(4));
+    setTxt('ari-usd-sell', '₹' + Number(ariFx.sell).toFixed(4));
   }
 
-  const fxForCalc = augFx?.buy ?? ariFx?.buy ?? null;
+  const fxForCalc = ariFx?.buy ?? augFx?.buy ?? null;
   if (S.xauAsk && fxForCalc) {
     const inr = (S.xauAsk / 31.1035) * fxForCalc * 10;
     document.getElementById('xau-inr').textContent = INR(inr) + ' / 10g (raw)';

@@ -312,7 +312,7 @@ function parseAuremData(raw) {
   raw.trim().split('\n').forEach(line => {
     const parts = line.trim().split('\t').map(s => s.trim());
     if (parts.length < 4) return;
-    // Aurem column order: (empty)/id, name, buy, sell, high, low
+    // Aurem column order after trim: id, name, buy, sell, high, low
     const [, name, buy, sell, high, low] = parts;
     if (!name) return;
     const key = name.toUpperCase().replace(/\s+/g, '_').replace(/[()₹$]/g, '');
