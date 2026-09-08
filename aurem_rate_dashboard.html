@@ -172,7 +172,7 @@
     </div>
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border);">
       <div>
-        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Live USD/INR <span style="color:var(--green); text-transform:none; font-size:0.6rem">(auto · Augmont Firebase · used for spot calc)</span></div>
+        <div style="font-size:0.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Live USD/INR <span style="color:var(--green); text-transform:none; font-size:0.6rem">(auto · Arihant · used for spot calc)</span></div>
         <div id="ib-live-fx" style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:9px 12px; color:var(--green); font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums;">—</div>
       </div>
       <div>
@@ -226,12 +226,6 @@
           <td class="val-silver" id="xag-bid">—</td>
           <td class="val-silver" id="xag-ask">—</td>
           <td class="val-muted" id="xag-inr">— ₹/10g (raw)</td>
-        </tr>
-        <tr>
-          <td>USD/INR — Augmont</td>
-          <td class="val-green" id="aug-usd-buy">—</td>
-          <td class="val-green" id="aug-usd-sell">—</td>
-          <td class="val-muted">Firebase</td>
         </tr>
         <tr>
           <td>USD/INR — Arihant</td>
@@ -292,7 +286,6 @@
 </div>
 
 <div class="update-bar">
-  <span>Augmont: <b id="aug-update">—</b></span>
   <span>Arihant: <b id="ari-update">—</b></span>
   <span>Intl: <b id="intl-update">—</b></span>
 </div>
@@ -352,7 +345,7 @@ function renderIndiaBullion() {
 
   const spotG = S.xauAsk;
   const spotS = S.xagAsk;
-  const liveFx = S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+  const liveFx = S.ari?.['USDINR']?.buy ?? S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
   const cbicFx = parseFloat(document.getElementById('ib-cbic-fx').value) || liveFx || 0;
   // Show live FX in the input row
   const liveFxEl = document.getElementById('ib-live-fx');
@@ -482,33 +475,17 @@ function renderDealerTables() {
     return r ? (r.sell > 0 ? r.sell : r.buy) : null;
   })();
 
-  // ── Gold table rows ────────────────────────────────────
+  // ── Gold table rows — Arihant only ──────────────────────
   const goldRows = [
-    // Augmont gold products (₹/10g)
-    { dealer: 'Augmont', product: 'Gold 999 (Mumbai T+0 Ex-GST)',    rate: aug['GOLDMUM999M']?.sell ?? null },
-    { dealer: 'Augmont', product: 'Gold 999 · 10g Retail (₹/10g)',   rate: aug['10GMUM999']?.sell   ?? null },
-    { dealer: 'Augmont', product: 'Gold 995 · 10g Retail (₹/10g)',   rate: aug['10GMUM995']?.sell   ?? null },
-    { dealer: 'Augmont', product: 'Gold 995 · 1kg Retail (₹/10g)',   rate: aug['GOLDMUM1KG995']?.sell ?? null },
-    { dealer: 'Augmont', product: 'Gold Coin 10g 999 (₹/10g)',       rate: aug['COIN999G10']?.sell  ?? null },
-    // Arihant gold products
     { dealer: 'Arihant', product: 'Gold 999 · 100g IND-BIS T+0',     rate: ariGold999 },
     { dealer: 'Arihant', product: 'Gold 995 · 1kg IND-BIS T+0',      rate: ariGold995 },
+    { dealer: 'Arihant', product: 'Gold Cost (Ari MCX)',              rate: ari['GOLD_COST']?.sell ?? null },
   ];
 
-  // ── Silver table rows (all ₹/kg) ───────────────────────
-  const augSil10g = aug['SIL10GM999']?.sell ?? null;
+  // ── Silver table rows (all ₹/kg) — Arihant only ─────────
   const silverRows = [
-    // Augmont
-    { dealer: 'Augmont', product: 'Silver 999 · Peti Mumbai (₹/kg)',   rate: aug['SILMUMPETI']?.sell    ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · T+2 Mumbai (₹/kg)',    rate: aug['SILMUMT+2']?.sell     ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · 5kg T+2 Mumbai',        rate: aug['SILMUM5T+2']?.sell    ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · Chorsa Mumbai',         rate: aug['SILMUMCHORSA']?.sell  ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · 20kg Mumbai',           rate: aug['SILMUM20KG']?.sell    ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · 1kg Bar',                rate: aug['SIL1KGBAR999']?.sell  ?? null },
-    { dealer: 'Augmont', product: 'Silver 999 · 10g Retail (×100 →kg)', rate: augSil10g != null ? augSil10g * 100 : null },
-    // Arihant
-    { dealer: 'Arihant', product: 'Silver 999 · Imported 30kg T+0',     rate: ariSilver30kg },
-    { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',            rate: ari['SILVER_COSTING']?.sell ?? null },
+    { dealer: 'Arihant', product: 'Silver 999 · Imported 30kg T+0',  rate: ariSilver30kg },
+    { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',         rate: ari['SILVER_COSTING']?.sell ?? null },
   ];
 
   document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, '');
@@ -521,9 +498,9 @@ function renderDealerRows(rows, mcx, bank, unit) {
     const rate = r.rate;
     const vsMcx  = (rate != null && mcx  != null) ? simpleDiff(rate - mcx)  : '—';
     const vsBank = (rate != null && bank != null) ? simpleDiff(rate - bank) : '—';
-    const cls = r.dealer === 'Augmont' ? 'val-gold' : 'val-blue';
+    const cls = 'val-blue';
     return `<tr>
-      <td><b style="color:${r.dealer === 'Augmont' ? 'var(--gold)' : 'var(--blue)'};">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
+      <td><b style="color:var(--blue);">${r.dealer}</b> · <span style="color:var(--text)">${r.product}</span></td>
       <td class="${cls}">${rate != null ? INR(rate) + unit : '—'}</td>
       <td class="val-orange">${mcx  != null ? INR(mcx)  + unit : '—'}</td>
       <td>${vsMcx}</td>
