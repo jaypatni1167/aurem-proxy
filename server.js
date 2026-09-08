@@ -468,6 +468,7 @@ app.post('/api/reset-hl', (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), spreadRange }));
+app.get('/api/arihant', (req, res) => res.json(latestRates.arihant || { error: 'no data yet' }));
 
 const INVESTING_PIDS = {
   '68':   'XAUUSD',    // Gold Spot XAU/USD

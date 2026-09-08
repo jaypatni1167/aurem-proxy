@@ -311,10 +311,20 @@ function findKey(obj, ...candidates) {
   for (const c of candidates) {
     if (obj[c]) return obj[c];
   }
-  // Last candidate is treated as a prefix to scan keys
+  // Prefix scan (existing behavior)
   const prefix = candidates[candidates.length - 1];
   for (const key of Object.keys(obj)) {
     if (key.startsWith(prefix)) return obj[key];
+  }
+  return null;
+}
+// Loose lookup: find first key that contains ALL given substrings (case-insensitive).
+// e.g. findLoose(ari, 'GOLD', '999', '100') → matches Arihant's actual key regardless of exact naming
+function findLoose(obj, ...tokens) {
+  const T = tokens.map(t => t.toUpperCase());
+  for (const key of Object.keys(obj)) {
+    const K = key.toUpperCase();
+    if (T.every(t => K.includes(t))) return obj[key];
   }
   return null;
 }
@@ -375,8 +385,8 @@ function renderIndiaBullion() {
   //   Gold  ₹/10g:  ari.GOLD_COST         (Arihant's MCX Gold rate)
   //   Silver ₹/kg:  ari.SILVER_COSTING    (Arihant's MCX Silver rate)
   // Fallback to Augmont Mumbai T+2 if Arihant is temporarily missing.
-  const mcxG = S.ari?.['GOLD_COST']?.sell      ?? S.aug?.['GOLDMUMT+2']?.sell   ?? S.aug?.['GOLDMUM1KG995']?.sell ?? null;
-  const mcxS = S.ari?.['SILVER_COSTING']?.sell ?? S.aug?.['SILMUMT+2']?.sell    ?? null;
+  const mcxG = (findLoose(S.ari || {}, 'GOLD', 'COST')?.sell)      ?? S.aug?.['GOLDMUMT+2']?.sell ?? S.aug?.['GOLDMUM1KG995']?.sell ?? null;
+  const mcxS = (findLoose(S.ari || {}, 'SILVER', 'COST')?.sell)    ?? S.aug?.['SILMUMT+2']?.sell ?? null;
 
   const diff = (a, b) => (a == null || b == null) ? '—' : simpleDiff(a - b);
   const inr = v => v != null ? INR(v) : '—';
@@ -461,31 +471,25 @@ function renderDealerTables() {
   const bankG = S.bankRateGold;
   const bankS = S.bankRateSilver;
 
-  // Helper to look up Arihant dated keys robustly
-  const ariGold999 = (function () {
-    const r = findKey(ari, 'GOLD_999_IND-BIS_(100GM)_T+0', 'GOLD_999_IND-BIS_(100GM)_', 'GOLD_999_INDIAN_(1KG)_T+0', 'GOLD_999_IND-BIS_');
-    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
-  })();
-  const ariGold995 = (function () {
-    const r = findKey(ari, 'GOLD_995_(1KG)_IND-BIS_T+0', 'GOLD_995_(1KG)_IND-BIS_', 'GOLD_995_(1KG)_');
-    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
-  })();
-  const ariSilver30kg = (function () {
-    const r = findKey(ari, 'SILVER_IMPORTED_(30KG)_T+0', 'SILVER_IMPORTED_(30KG)_', 'SILVER_IMPORTED_');
-    return r ? (r.sell > 0 ? r.sell : r.buy) : null;
-  })();
+  // Loose lookup: match any Arihant key containing all the given tokens.
+  const pickRate = r => r ? (r.sell > 0 ? r.sell : (r.buy > 0 ? r.buy : null)) : null;
+  const ariGold999    = pickRate(findLoose(ari, 'GOLD', '999') || findLoose(ari, 'GOLD_999'));
+  const ariGold995    = pickRate(findLoose(ari, 'GOLD', '995'));
+  const ariSilver30kg = pickRate(findLoose(ari, 'SILVER', '30') || findLoose(ari, 'SILVER', 'IMPORTED'));
+  const ariGoldCost   = pickRate(findLoose(ari, 'GOLD', 'COST'));
+  const ariSilverCost = pickRate(findLoose(ari, 'SILVER', 'COST'));
 
   // ── Gold table rows — Arihant only ──────────────────────
   const goldRows = [
     { dealer: 'Arihant', product: 'Gold 999 · 100g IND-BIS T+0',     rate: ariGold999 },
     { dealer: 'Arihant', product: 'Gold 995 · 1kg IND-BIS T+0',      rate: ariGold995 },
-    { dealer: 'Arihant', product: 'Gold Cost (Ari MCX)',              rate: ari['GOLD_COST']?.sell ?? null },
+    { dealer: 'Arihant', product: 'Gold Cost (Ari MCX)',              rate: ariGoldCost },
   ];
 
   // ── Silver table rows (all ₹/kg) — Arihant only ─────────
   const silverRows = [
     { dealer: 'Arihant', product: 'Silver 999 · Imported 30kg T+0',  rate: ariSilver30kg },
-    { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',         rate: ari['SILVER_COSTING']?.sell ?? null },
+    { dealer: 'Arihant', product: 'Silver Costing (Ari MCX)',         rate: ariSilverCost },
   ];
 
   document.getElementById('gold-dealer-tbody').innerHTML   = renderDealerRows(goldRows,   goldMcx, bankG, '');
