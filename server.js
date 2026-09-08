@@ -156,6 +156,7 @@ function httpsGet(url, headers) {
     const options = {
       agent: ipv4Agent,
       hostname: urlObj.hostname,
+      port: urlObj.port || 443,
       path: urlObj.pathname + urlObj.search,
       method: 'GET',
       headers: headers
