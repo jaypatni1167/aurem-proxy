@@ -209,6 +209,7 @@
     <a class="nav-link" href="/">Rates</a>
     <a class="nav-link" href="/main">Main</a>
     <a class="nav-link active" href="/arb">Detailed Arb</a>
+    <a class="nav-link" href="/silver">Silver Pricing</a>
     <div class="pill off" id="statusPill">
       <div class="dot" id="statusDot"></div>
       <span id="statusLabel">Connecting...</span>
@@ -222,6 +223,7 @@
   <div class="tab-btn active" data-metal="gold"   onclick="switchTab('gold')">Gold</div>
   <div class="tab-btn"        data-metal="silver" onclick="switchTab('silver')">Silver</div>
   <div class="tab-btn"        data-metal="oil"    onclick="switchTab('oil')">Oil (Brent vs WTI)</div>
+  <div class="tab-btn"        data-metal="silverArticles" onclick="switchTab('silverArticles')">Silver Articles</div>
 </div>
 
 <div class="main">
@@ -414,6 +416,27 @@
 
 </div>
 
+<!-- ─── Silver Articles — pricing settings for /silver (Jewel Silver Articles) ─── -->
+<div class="main" id="silver-articles-panel" style="display:none">
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-silver">■</span> Silver Articles — Pricing Settings
+      <span class="tag">Used by the Jewel Silver Articles page</span>
+    </div>
+    <div class="config-bar" style="flex-wrap:wrap">
+      <div class="config-item"><label>COMEX add-on ($/oz)</label><input type="number" id="sa-add" step="0.01"></div>
+      <div class="config-item"><label>Premium ($/oz)</label><input type="number" id="sa-prem" step="0.01"></div>
+      <div class="config-item"><label>USD → AED</label><input type="number" id="sa-fx" step="0.001"></div>
+      <div class="config-item"><label>VAT %</label><input type="number" id="sa-vat" step="0.1"></div>
+      <div class="config-item"><label>Manual COMEX override ($/oz)</label><input type="number" id="sa-manual" step="0.01" placeholder="blank = live"></div>
+    </div>
+    <p style="padding:0 20px 16px;font-size:0.75rem;color:var(--muted);line-height:1.6">
+      Spot = COMEX + add-on · Sale = Spot + Premium · Base AED/g = Sale × USD→AED ÷ 31.1035 · Rate = Base + min profit per gram.
+      Changes apply instantly to the <a href="/silver" style="color:var(--gold)">Jewel Silver Articles</a> page in this browser.
+    </p>
+  </div>
+</div>
+
 <div class="footer">
   <span>TV Futures: <b id="tv-update">—</b></span>
   <span>TV Spot: <b id="mt5-update">—</b></span>
@@ -432,12 +455,33 @@ const S = {
 };
 
 function switchTab(metal) {
-  S.activeMetal = metal;
   document.querySelectorAll('.tab-btn').forEach(t => {
     t.classList.toggle('active', t.dataset.metal === metal);
   });
+  const isArticles = metal === 'silverArticles';
+  document.querySelector('.main:not(#silver-articles-panel)').style.display = isArticles ? 'none' : '';
+  document.getElementById('silver-articles-panel').style.display = isArticles ? '' : 'none';
+  if (isArticles) return;
+  S.activeMetal = metal;
   render();
 }
+
+// ── Silver Articles settings (shared with /silver via localStorage) ─────
+(function initSilverArticlesSettings() {
+  const KEY = 'aurem-silver-pricing';
+  const DEF = { add: 0.20, prem: 3, fx: 3.674, vat: 5, manual: '' };
+  let cfg = { ...DEF };
+  try { cfg = { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (_) {}
+  [['sa-add','add'],['sa-prem','prem'],['sa-fx','fx'],['sa-vat','vat'],['sa-manual','manual']].forEach(([id, k]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = cfg[k];
+    el.addEventListener('input', () => {
+      cfg[k] = k === 'manual' ? el.value : (parseFloat(el.value) || 0);
+      try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (_) {}
+    });
+  });
+})();
 
 function onSpotArbDetailChange() {
   const sel = document.getElementById('spot-arb-detail-sel');

@@ -38,6 +38,7 @@ function serveNoCache(res, file) {
 }
 app.get('/', (req, res) => serveNoCache(res, findHtml('aurem_rate_dashboard.html')));
 app.get('/arb', (req, res) => serveNoCache(res, findHtml('aurem_arb_dashboard.html')));
+app.get('/silver', (req, res) => serveNoCache(res, findHtml('aurem_silver_pricing.html')));
 app.get('/main', (req, res) => serveNoCache(res, findHtml('aurem_main_dashboard.html')));
 
 

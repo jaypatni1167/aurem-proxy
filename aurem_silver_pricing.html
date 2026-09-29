@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jewel Silver Articles</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface2: #faf6ef;        /* champagne tint */
+    --border: #ebe2d2;
+    --text: #2e1a47;            /* dark purple */
+    --text-soft: #4b3566;
+    --muted: #8a7c99;
+    --champ: #c9a96e;           /* champagne gold */
+    --champ-deep: #a8874a;
+    --champ-soft: #f4ebdb;
+    --green: #2f8f5b;
+    --red: #b3413b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif; }
+
+  header { background: var(--surface); border-bottom: 2px solid var(--champ); padding: 14px 28px;
+           display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .logo { font-size: 1.25rem; font-weight: 800; letter-spacing: 3px; color: var(--text); text-transform: uppercase; }
+  .logo span { color: var(--champ-deep); font-weight: 400; }
+  .header-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .nav-link { padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 0.75rem; color: var(--text-soft); text-decoration: none; }
+  .nav-link:hover { border-color: var(--champ); color: var(--champ-deep); }
+  .nav-link.active { background: var(--text); color: #fff; border-color: var(--text); font-weight: 700; }
+  .pill { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--border); }
+  .pill.live { border-color: var(--green); color: var(--green); }
+  .pill.off  { border-color: var(--red); color: var(--red); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 22px 20px 60px; display: grid; gap: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+          box-shadow: 0 1px 3px rgba(46,26,71,0.05); }
+  .card-title { padding: 12px 20px; background: var(--text); color: #fff;
+                font-size: 0.72rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 700;
+                display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card-title .aside { letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--champ); }
+
+  /* ── Spot rate — one line ── */
+  .spotline { display: grid; grid-template-columns: 1fr 1fr 1.3fr; }
+  .spotline > div { padding: 16px 20px; border-right: 1px solid var(--border); min-width: 0; }
+  .spotline > div:last-child { border-right: none; }
+  .spotline .primary { background: var(--champ-soft); }
+  .primary .val { color: var(--champ-deep); }
+  .lbl { font-size: 0.64rem; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; white-space: nowrap; }
+  .val { font-size: 1.35rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .primary .val { font-size: 1.9rem; font-weight: 800; }
+  .sub { font-size: 0.72rem; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .flash-up { animation: fu 0.8s; } .flash-dn { animation: fd 0.8s; }
+  @keyframes fu { 0% { color: var(--green); } } @keyframes fd { 0% { color: var(--red); } }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 12px 16px; text-align: right; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  th { font-size: 0.64rem; letter-spacing: 1px; text-transform: uppercase; color: var(--champ-deep); background: var(--surface2); font-weight: 700; }
+  th:first-child, td:first-child { text-align: left; }
+  td:not(:first-child) { white-space: nowrap; }
+  td:first-child { color: var(--text); font-weight: 600; }
+  tbody tr:nth-child(even) td { background: #fdfbf7; }
+  tbody tr:hover td { background: var(--champ-soft); }
+  td[data-cust] { cursor: pointer; }
+  tr.sel td { background: var(--champ-soft) !important; }
+  td.hit { background: var(--champ) !important; color: #fff; font-weight: 800; }
+
+  /* ── Calculator ── */
+  .calc { display: grid; grid-template-columns: 1fr 1fr; }
+  .calc-in { padding: 22px; border-right: 1px solid var(--border); display: grid; gap: 18px; align-content: start; }
+  .calc-out { padding: 22px; display: grid; gap: 4px; align-content: start; }
+  .field label { display: block; font-size: 0.66rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  select, input[type=number] { width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; color: var(--text); font-size: 1rem; outline: none; font-variant-numeric: tabular-nums; }
+  select:focus, input:focus { border-color: var(--champ); box-shadow: 0 0 0 3px rgba(201,169,110,0.2); }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .seg button { background: #fff; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 11px 8px;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer; line-height: 1.25; }
+  .seg button small { display: block; font-size: 0.68rem; color: var(--muted); font-weight: 500; margin-top: 3px; }
+  .seg button:hover { border-color: var(--champ); }
+  .seg button.on { border-color: var(--text); background: var(--text); color: #fff; }
+  .seg button.on small { color: var(--champ); }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .quick button { background: var(--surface2); border: 1px solid var(--border); color: var(--text-soft); border-radius: 14px;
+    padding: 4px 10px; font-size: 0.72rem; cursor: pointer; }
+  .quick button:hover { border-color: var(--champ); color: var(--champ-deep); }
+
+  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-bottom: 1px dashed var(--border); font-variant-numeric: tabular-nums; }
+  .row span:first-child { color: var(--muted); font-size: 0.85rem; }
+  .row b { font-size: 1.05rem; color: var(--text); }
+  .total { margin-top: 12px; padding: 18px; border-radius: 10px; background: var(--text); }
+  .total .lbl { color: var(--champ); }
+  .total .big { color: #fff; font-size: 2.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .total .sub { color: #cbbfd9; white-space: normal; }
+  .warn { font-size: 0.8rem; color: var(--red); min-height: 1em; }
+
+  @media (max-width: 820px) {
+    header { padding: 12px 16px; }
+    main { padding: 14px; }
+    .spotline > div { padding: 12px 10px; }
+    .val { font-size: 1.05rem; }
+    .primary .val { font-size: 1.3rem; }
+    .lbl, .sub { font-size: 0.58rem; letter-spacing: 0.5px; }
+    .calc { grid-template-columns: 1fr; }
+    .calc-in { border-right: none; border-bottom: 1px solid var(--border); }
+    .table-wrap { overflow-x: auto; }
+    th, td { padding: 10px 10px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Jewel <span>Silver Articles</span></div>
+  <div class="header-meta">
+    <a class="nav-link" href="/">Rates</a>
+    <a class="nav-link" href="/main">Main</a>
+    <a class="nav-link" href="/arb">Detailed Arb</a>
+    <a class="nav-link active" href="/silver">Silver Pricing</a>
+    <div class="pill off" id="statusPill"><span class="dot"></span><span id="statusLabel">Connecting…</span></div>
+  </div>
+</header>
+
+<main>
+  <!-- 1 ── Spot rate (single line) ───────────────────── -->
+  <section class="card">
+    <div class="card-title">
+      <span>Silver Spot Rate</span>
+      <span class="aside" id="srcTag">Source: —</span>
+    </div>
+    <div class="spotline">
+      <div>
+        <div class="lbl">COMEX Rate ($/oz)</div>
+        <div class="val" id="comexVal">—</div>
+        <div class="sub">Spot <span id="spotRate">—</span> (+$<span id="spotAddLbl">0.20</span>)</div>
+      </div>
+      <div>
+        <div class="lbl">Premium ($/oz)</div>
+        <div class="val" id="premVal">—</div>
+        <div class="sub">Sale <span id="salePrice">—</span></div>
+      </div>
+      <div class="primary">
+        <div class="lbl">Dhs Rate (AED / g)</div>
+        <div class="val" id="basePerG">—</div>
+        <div class="sub"><span id="basePerKg">—</span> / kg · <span id="updTs">—</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 ── Minimum selling rate table ────────────────── -->
+  <section class="card">
+    <div class="card-title"><span>Minimum Selling Rate per Gram (AED, before VAT)</span><span class="aside">Click a rate to load it in the calculator</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Category</th><th>Base AED/g</th>
+          <th>Wholesale B2B</th><th>Retail Bulk Qty</th><th>Retail</th>
+        </tr></thead>
+        <tbody id="rateTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 3 ── Retail price calculator ───────────────────── -->
+  <section class="card">
+    <div class="card-title"><span>Retail Price Calculator</span></div>
+    <div class="calc">
+      <div class="calc-in">
+        <div class="field">
+          <label for="category">Product Category</label>
+          <select id="category"></select>
+        </div>
+        <div class="field">
+          <label>Customer Type</label>
+          <div class="seg" id="custSeg"></div>
+        </div>
+        <div class="field">
+          <label for="weight">Weight (grams)</label>
+          <input type="number" id="weight" min="0" step="0.01" inputmode="decimal" placeholder="Enter weight in grams">
+          <div class="quick" id="quickW"></div>
+        </div>
+        <div class="warn" id="warn"></div>
+      </div>
+      <div class="calc-out">
+        <div class="row"><span>Rate per gram (Base + Margin)</span><b id="oRate">—</b></div>
+        <div class="row"><span>Margin per gram</span><b id="oMargin">—</b></div>
+        <div class="row"><span>Weight</span><b id="oWeight">—</b></div>
+        <div class="row"><span>Net Price</span><b id="oNet">—</b></div>
+        <div class="row"><span>VAT (<span id="vatLbl">5</span>%)</span><b id="oVat">—</b></div>
+        <div class="total">
+          <div class="lbl">Total Price (Net + VAT)</div>
+          <div class="big" id="oTotal">—</div>
+          <div class="sub" id="oTotalSub"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ── Pricing table from SILVER RATE SELLING DETAILS.xlsx ─────────────────
+// margin = "MIN PROFIT PER GMS" (AED) for each customer type
+const CATEGORIES = [
+  { id: 'articles', name: 'Articles',                                    margins: { b2b: 3.25, bulk: 3.5,  retail: 5 },    bulkQty: '2kg' },
+  { id: 'oxodise',  name: 'Oxodise Papercasting Idols & Emerald Idols',  margins: { b2b: 9,    bulk: 10,   retail: 12.5 }, bulkQty: '2kg' },
+  { id: 'light',    name: 'Articles Light Weight / Fancy Items (< 10g)', margins: { b2b: 4,    bulk: 5,    retail: 10 },   bulkQty: '2kg' },
+  { id: 'plain',    name: 'Plain Coins',                                 margins: { b2b: 3,    bulk: 3.5,  retail: 4.5 },  bulkQty: '1kg' },
+  { id: 'color',    name: 'Color Coins',                                 margins: { b2b: 3.5,  bulk: 3.75, retail: 5 },    bulkQty: '1kg' },
+];
+const CUSTOMERS = [
+  { id: 'b2b',    name: 'Wholesale B2B' },
+  { id: 'bulk',   name: 'Retail Bulk Qty' },
+  { id: 'retail', name: 'Retail' },
+];
+const OZ = 31.1035;
+// Settings are edited in Detailed Arb → Silver Articles (shared localStorage key)
+const CFG_KEY = 'aurem-silver-pricing';
+const DEFAULTS = { add: 0.20, prem: 3, fx: 3.674, vat: 5, manual: '' };
+
+const S = { comex: null, comexSrc: null, comexTs: null, cat: 'articles', cust: 'retail' };
+let cfg = { ...DEFAULTS };
+function loadCfg() {
+  try { cfg = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch (_) { cfg = { ...DEFAULTS }; }
+}
+loadCfg();
+try {
+  const last = JSON.parse(localStorage.getItem('aurem-silver-last') || '{}');
+  if (CATEGORIES.some(c => c.id === last.cat)) S.cat = last.cat;
+  if (CUSTOMERS.some(c => c.id === last.cust)) S.cust = last.cust;
+} catch (_) {}
+const saveLast = () => { try { localStorage.setItem('aurem-silver-last', JSON.stringify({ cat: S.cat, cust: S.cust })); } catch (_) {} };
+// Pick up setting changes made on the Detailed Arb page
+window.addEventListener('storage', e => { if (e.key === CFG_KEY) { loadCfg(); render(); } });
+window.addEventListener('focus', () => { loadCfg(); render(); });
+
+const $ = id => document.getElementById(id);
+const aed = (v, d = 2) => v == null || !isFinite(v) ? '—' : 'AED ' + v.toLocaleString('en-AE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const usd = v => v == null || !isFinite(v) ? '—' : '$' + v.toFixed(3);
+
+// ── Core pricing (mirrors spreadsheet) ───────────────────────────────────
+function comexUsed() {
+  const m = parseFloat(cfg.manual);
+  return isFinite(m) && m > 0 ? m : S.comex;
+}
+function pricing() {
+  const comex = comexUsed();
+  if (comex == null) return null;
+  const spot = comex + Number(cfg.add);
+  const sale = spot + Number(cfg.prem);
+  const basePerG = sale * Number(cfg.fx) / OZ;          // =(C*3.674)/31.1035
+  return { comex, spot, sale, basePerG };
+}
+const rateFor = (base, catId, custId) => base + CATEGORIES.find(c => c.id === catId).margins[custId];
+
+// ── Static UI ────────────────────────────────────────────────────────────
+$('category').innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+$('category').value = S.cat;
+$('category').addEventListener('change', e => { S.cat = e.target.value; saveLast(); render(); });
+
+function buildCustSeg() {
+  const cat = CATEGORIES.find(c => c.id === S.cat);
+  $('custSeg').innerHTML = CUSTOMERS.map(c => {
+    const hint = c.id === 'bulk' ? `min ${cat.bulkQty} · +AED ${cat.margins[c.id]}/g` : `+AED ${cat.margins[c.id]}/g`;
+    return `<button type="button" data-id="${c.id}" class="${c.id === S.cust ? 'on' : ''}">${c.name}<small>${hint}</small></button>`;
+  }).join('');
+}
+$('custSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.cust = b.dataset.id; saveLast(); render();
+});
+
+$('quickW').innerHTML = [10, 50, 100, 250, 500, 1000, 2000].map(g => `<button type="button" data-g="${g}">${g >= 1000 ? g / 1000 + ' kg' : g + ' g'}</button>`).join('');
+$('quickW').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('weight').value = b.dataset.g; render(); });
+$('weight').addEventListener('input', render);
+
+$('rateTable').addEventListener('click', e => {
+  const td = e.target.closest('td[data-cust]'); if (!td) return;
+  S.cat = td.parentElement.dataset.cat; S.cust = td.dataset.cust;
+  $('category').value = S.cat; saveLast(); render();
+  $('weight').focus();
+});
+
+// ── Render ───────────────────────────────────────────────────────────────
+let prevSpot = null;
+function render() {
+  const p = pricing();
+  buildCustSeg();
+  $('spotAddLbl').textContent = Number(cfg.add).toFixed(2);
+  $('vatLbl').textContent     = cfg.vat;
+
+  if (p) {
+    const el = $('basePerG');
+    el.textContent = aed(p.basePerG, 3);
+    if (prevSpot != null && p.basePerG !== prevSpot) {
+      el.classList.remove('flash-up', 'flash-dn'); void el.offsetWidth;
+      el.classList.add(p.basePerG > prevSpot ? 'flash-up' : 'flash-dn');
+    }
+    prevSpot = p.basePerG;
+    const manual = comexUsed() !== S.comex;
+    $('comexVal').textContent  = usd(p.comex) + (manual ? '*' : '');
+    $('spotRate').textContent  = usd(p.spot);
+    $('premVal').textContent   = '+$' + Number(cfg.prem).toFixed(2);
+    $('salePrice').textContent = usd(p.sale);
+    $('basePerKg').textContent = aed(p.basePerG * 1000, 0);
+    $('srcTag').textContent = manual ? 'Source: manual override (*)' : `Source: ${S.comexSrc || '—'}`;
+  }
+  if (S.comexTs) $('updTs').textContent = new Date(S.comexTs).toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour12: false }) + ' GST';
+
+  // Rate table
+  $('rateTable').innerHTML = CATEGORIES.map(c => {
+    const base = p ? p.basePerG : null;
+    const cell = k => {
+      const hit = c.id === S.cat && k === S.cust ? 'hit' : '';
+      return `<td data-cust="${k}" class="${hit}">${base == null ? '—' : aed(rateFor(base, c.id, k), 3)}</td>`;
+    };
+    return `<tr data-cat="${c.id}" class="${c.id === S.cat ? 'sel' : ''}"><td>${c.name}</td><td>${aed(base, 3)}</td>${cell('b2b')}${cell('bulk')}${cell('retail')}</tr>`;
+  }).join('');
+
+  // Calculator
+  const w = parseFloat($('weight').value);
+  const cat = CATEGORIES.find(c => c.id === S.cat);
+  const warn = [];
+  if ($('weight').value !== '' && !(w > 0)) warn.push('Weight must be greater than 0.');
+  if (S.cat === 'light' && w >= 10) warn.push('This category is for items under 10 g — check the category.');
+  if (S.cust === 'bulk' && w > 0) {
+    const minG = cat.bulkQty === '1kg' ? 1000 : 2000;
+    if (w < minG) warn.push(`Retail Bulk rate applies from ${cat.bulkQty}. This order is ${w} g.`);
+  }
+  $('warn').textContent = warn.join(' ');
+
+  if (!p) { ['oRate','oMargin','oWeight','oNet','oVat','oTotal'].forEach(id => $(id).textContent = '—'); $('oTotalSub').textContent = 'Waiting for live COMEX rate…'; return; }
+  const margin = cat.margins[S.cust];
+  const rate = p.basePerG + margin;
+  $('oRate').textContent   = aed(rate, 3) + ' / g';
+  $('oMargin').textContent = aed(margin, 2) + ' / g';
+  if (!(w > 0)) {
+    ['oWeight','oNet','oVat','oTotal'].forEach(id => $(id).textContent = '—');
+    $('oTotalSub').textContent = 'Enter weight to calculate';
+    return;
+  }
+  const net = rate * w;
+  const vat = net * Number(cfg.vat) / 100;
+  $('oWeight').textContent = w.toLocaleString('en-AE') + ' g';
+  $('oNet').textContent    = aed(net);
+  $('oVat').textContent    = aed(vat);
+  $('oTotal').textContent  = aed(net + vat);
+  $('oTotalSub').textContent = `${cat.name} · ${CUSTOMERS.find(c => c.id === S.cust).name} · incl. VAT ${cfg.vat}%`;
+}
+
+// ── Live data (same WebSocket as the other dashboards) ──────────────────
+function setStatus(live, label) {
+  $('statusPill').className = 'pill ' + (live ? 'live' : 'off');
+  $('statusLabel').textContent = label;
+}
+let ws, wsTimer, lastMsg = 0;
+function connectWS() {
+  clearTimeout(wsTimer);
+  try { if (ws) ws.close(); } catch (_) {}
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = location.protocol === 'file:' ? 'ws://localhost:3001/ws' : `${proto}//${location.host}/ws`;
+  ws = new WebSocket(url);
+  ws.onopen = () => { lastMsg = Date.now(); setStatus(true, 'Live'); };
+  ws.onmessage = e => {
+    lastMsg = Date.now();
+    let msg; try { msg = JSON.parse(e.data); } catch (_) { return; }
+    if (msg.type !== 'rates' || msg.source !== 'tvspot' || !msg.prices) return;
+    // Prefer COMEX front-month silver futures; fall back to XAG spot if unavailable
+    const si = msg.prices.SI_LIVE, xag = msg.prices.XAGUSD;
+    if (si && si.close != null) { S.comex = si.close; S.comexSrc = 'COMEX Silver (front month)'; }
+    else if (xag && (xag.ask ?? xag.close) != null && (!S.comexSrc || S.comexSrc.startsWith('XAG'))) {
+      S.comex = xag.ask ?? xag.close; S.comexSrc = 'XAG/USD spot (COMEX feed unavailable)';
+    } else return;
+    S.comexTs = Date.now();
+    render();
+  };
+  ws.onclose = () => { setStatus(false, 'Reconnecting…'); wsTimer = setTimeout(connectWS, 3000); };
+  ws.onerror = () => {};
+}
+setInterval(() => { if (lastMsg && Date.now() - lastMsg > 20000) { lastMsg = Date.now(); connectWS(); } }, 5000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN || Date.now() - lastMsg > 5000)) connectWS();
+});
+
+render();
+connectWS();
+</script>
+</body>
+</html>
