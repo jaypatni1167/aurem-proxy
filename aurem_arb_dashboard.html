@@ -495,6 +495,42 @@ function daysTo(exp) {
   return diff > 0 ? diff : null;
 }
 
+// ── Bank Rate conversion — IDENTICAL to the Rates page formula ──────────────
+// Reads the Rates page inputs (shared localStorage 'aurem-cbic-inputs'):
+//   Intl Value (₹)  = (USD/oz + Prem) × Live USD/INR ÷ 31.1035 × unit
+//   Custom Duty (₹) = Tariff × CBIC USD/INR × Duty%
+//   Bank Rate (₹)   = Intl Value + Custom Duty
+// unit: 10 (₹/10g gold) or 1000 (₹/kg silver)
+function readRatesInputs() {
+  let d = {};
+  try { d = JSON.parse(localStorage.getItem('aurem-cbic-inputs') || '{}'); } catch (_) {}
+  const num = (v, def) => { const n = parseFloat(v); return isFinite(n) ? n : def; };
+  return {
+    goldPrem:     num(d['ib-gold-prem'],    -10),
+    silverPrem:   num(d['ib-silver-prem'],  1.25),
+    goldTariff:   num(d['ib-gold-tariff'],  1407),
+    silverTariff: num(d['ib-silver-tariff'], 2097),
+    dutyPct:      num(d['ib-duty-pct'],     15),
+    cbicFx:       num(d['ib-cbic-fx'],      95.06),
+  };
+}
+function liveFxForBank() {
+  // Same source priority as the Rates page: Arihant USD_INR → Augmont → any live FX
+  return S.ari?.['USD_INR']?.buy ?? S.aug?.['USDINR']?.buy ?? S.usdinr ?? null;
+}
+function bankRateINR(usdPerOz, metal) {
+  const fx = liveFxForBank();
+  if (usdPerOz == null || fx == null) return null;
+  const p = readRatesInputs();
+  const isGold = metal === 'gold';
+  const unit   = isGold ? 10 : 1000;
+  const prem   = isGold ? p.goldPrem : p.silverPrem;
+  const tariff = isGold ? p.goldTariff : p.silverTariff;
+  const intl   = (usdPerOz + prem) * fx / 31.1035 * unit;
+  const duty   = tariff * p.cbicFx * (p.dutyPct / 100);
+  return intl + duty;
+}
+
 function annualize(prem, base, days) {
   if (base == null || days == null || days <= 0) return null;
   return ((prem / base) * (365 / days) * 100);
@@ -550,7 +586,7 @@ function render() {
   } else {
     // Gold/Silver: parity via international spot × USD/INR × duty
     intlParity = (spotUSD != null && usdinr != null)
-      ? (spotUSD * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100)
+      ? bankRateINR(spotUSD, isGold ? 'gold' : 'silver')
       : null;
     domesticSpot = isGold
       ? (aug['10GMUM999']?.sell ?? null)
@@ -716,7 +752,7 @@ function render() {
       const days = daysTo(m.expiration);
       annSpread = (m.close != null && days != null) ? annualize(spread, m.close, days) : null;
     } else {
-      impliedForRow = (best.close * usdinr / 31.1035) * gramMultiplier * purity * (1 + dutyPct/100);
+      impliedForRow = bankRateINR(best.close, isGold ? 'gold' : 'silver');
       spread = m.close - impliedForRow;
       const days = daysTo(m.expiration);
       annSpread = (impliedForRow != null && days != null) ? annualize(spread, impliedForRow, days) : null;
@@ -937,6 +973,7 @@ function connectWS() {
       const msg = JSON.parse(e.data);
       if (msg.type !== 'rates') return;
       if (msg.source === 'tvspot') tvspotCount++;
+      if (msg.source === 'arihant') { S.ari = msg.prices; }
       if (msg.source === 'augmont') {
         S.aug = msg.prices;
         document.getElementById('aug-update').textContent = new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
@@ -1032,6 +1069,8 @@ document.addEventListener('visibilitychange', () => {
 
 // Force re-render every second so the Date/time ticks and calculations stay fresh
 setInterval(render, 1000);
+// Re-render when Rates page inputs (duty, tariff, CBIC FX, prem) change in another tab
+window.addEventListener('storage', (e) => { if (e.key === 'aurem-cbic-inputs') render(); });
 </script>
 </body>
 </html>
