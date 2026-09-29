@@ -36,10 +36,97 @@ function serveNoCache(res, file) {
   res.set('Pragma', 'no-cache');
   res.sendFile(file);
 }
-app.get('/', (req, res) => serveNoCache(res, findHtml('aurem_rate_dashboard.html')));
-app.get('/arb', (req, res) => serveNoCache(res, findHtml('aurem_arb_dashboard.html')));
-app.get('/silver', (req, res) => serveNoCache(res, findHtml('aurem_silver_pricing.html')));
-app.get('/main', (req, res) => serveNoCache(res, findHtml('aurem_main_dashboard.html')));
+// ── PIN access control ─────────────────────────────────────────────────
+// Two sections, each with its own PIN. Access is a signed, HttpOnly cookie
+// checked server-side on every page, API call and WebSocket connection.
+const crypto = require('crypto');
+const AUTH_ROLES = {
+  trade:  { pin: '0626', home: '/rates'  },  // Rates · Main · Detailed Arb
+  silver: { pin: '1167', home: '/silver' },  // Jewel Silver Articles
+};
+const AUTH_COOKIE = 'aurem_auth';
+const AUTH_TTL_MS = 12 * 60 * 60 * 1000;   // re-enter PIN after 12 hours
+const AUTH_SECRET_FILE = path.join(__dirname, '.auth-secret');
+const AUTH_SECRET = (() => {
+  try { return fs.readFileSync(AUTH_SECRET_FILE, 'utf8').trim(); } catch (_) {}
+  const s = crypto.randomBytes(32).toString('hex');
+  try { fs.writeFileSync(AUTH_SECRET_FILE, s, { mode: 0o600 }); } catch (_) {}
+  return s;
+})();
+const sign = (data) => crypto.createHmac('sha256', AUTH_SECRET).update(data).digest('base64url');
+function makeToken(roles) {
+  const body = Buffer.from(JSON.stringify({ roles, exp: Date.now() + AUTH_TTL_MS })).toString('base64url');
+  return body + '.' + sign(body);
+}
+function parseCookies(header) {
+  const out = {};
+  (header || '').split(';').forEach(p => {
+    const i = p.indexOf('=');
+    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+  });
+  return out;
+}
+function rolesFromReq(req) {
+  const tok = parseCookies(req.headers.cookie)[AUTH_COOKIE];
+  if (!tok || !tok.includes('.')) return [];
+  const [body, sig] = tok.split('.');
+  const expected = sign(body);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return [];
+  try {
+    const data = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!data.exp || data.exp < Date.now()) return [];
+    return Array.isArray(data.roles) ? data.roles.filter(r => AUTH_ROLES[r]) : [];
+  } catch (_) { return []; }
+}
+function setAuthCookie(req, res, roles) {
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${makeToken(roles)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${AUTH_TTL_MS / 1000}${secure ? '; Secure' : ''}`);
+}
+// Brute-force guard: 5 wrong PINs per IP → locked for 5 minutes
+const pinFails = new Map();
+const clientIp = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (rolesFromReq(req).includes(role)) return next();
+    if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'PIN required' });
+    res.redirect('/?next=' + encodeURIComponent(req.originalUrl));
+  };
+}
+const requireAny = (req, res, next) => rolesFromReq(req).length ? next() : res.status(401).json({ error: 'PIN required' });
+
+app.get('/', (req, res) => serveNoCache(res, findHtml('aurem_gate.html')));
+app.get('/api/session', (req, res) => res.json({ roles: rolesFromReq(req) }));
+app.post('/api/login', (req, res) => {
+  const ip = clientIp(req);
+  const rec = pinFails.get(ip);
+  if (rec && rec.until > Date.now()) {
+    return res.status(429).json({ error: `Too many attempts. Try again in ${Math.ceil((rec.until - Date.now()) / 60000)} min.` });
+  }
+  const { section, pin } = req.body || {};
+  const role = AUTH_ROLES[section];
+  if (!role || String(pin || '') !== role.pin) {
+    // Previous lock expired → start counting fresh; otherwise keep counting
+    const n = (rec && rec.until > 0 ? 0 : (rec?.count || 0)) + 1;
+    pinFails.set(ip, n >= 5 ? { count: 0, until: Date.now() + 5 * 60 * 1000 } : { count: n, until: 0 });
+    return res.status(401).json({ error: n >= 5 ? 'Too many attempts. Locked for 5 minutes.' : 'Incorrect PIN' });
+  }
+  pinFails.delete(ip);
+  const roles = Array.from(new Set([...rolesFromReq(req), section]));
+  setAuthCookie(req, res, roles);
+  res.json({ ok: true, home: role.home });
+});
+app.get('/logout', (req, res) => {
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  res.redirect('/');
+});
+
+app.get('/rates',  requireRole('trade'),  (req, res) => serveNoCache(res, findHtml('aurem_rate_dashboard.html')));
+app.get('/main',   requireRole('trade'),  (req, res) => serveNoCache(res, findHtml('aurem_main_dashboard.html')));
+app.get('/arb',    requireRole('trade'),  (req, res) => serveNoCache(res, findHtml('aurem_arb_dashboard.html')));
+app.get('/silver', requireRole('silver'), (req, res) => serveNoCache(res, findHtml('aurem_silver_pricing.html')));
+// All data APIs need a valid PIN session (either section)
+app.use('/api', (req, res, next) => (req.path === '/login' || req.path === '/session') ? next() : requireAny(req, res, next));
 
 
 // ── MT5 price feed via file watching ──────────────────────────
@@ -936,7 +1023,7 @@ setInterval(fetchTradingView, 10000);  // 10s to stay under TV rate limit
 
 // Health check endpoint
 app.get('/health', (req, res) => res.json({ status: 'ok', augmont: !!latestRates.augmont, arihant: !!latestRates.arihant }));
-app.get('/rates', (req, res) => res.json(latestRates));
+app.get('/api/rates', (req, res) => res.json(latestRates));
 
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
@@ -945,7 +1032,11 @@ const server = app.listen(PORT, () => {
   connectAugmont();
 });
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server, path: '/ws',
+  // Live feed only for browsers that have entered a PIN
+  verifyClient: (info) => rolesFromReq(info.req).length > 0,
+});
 wss.on('connection', (ws) => {
   clients.add(ws);
   ws.isAlive = true;

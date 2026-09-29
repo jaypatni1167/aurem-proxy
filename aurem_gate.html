@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jewel Trading — Access</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface2: #faf6ef; --border: #ebe2d2;
+    --text: #2e1a47; --muted: #8a7c99;
+    --champ: #c9a96e; --champ-deep: #a8874a; --champ-soft: #f4ebdb; --red: #b3413b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif;
+         min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; }
+  .brand { font-size: 1.4rem; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 6px; text-align: center; }
+  .brand span { color: var(--champ-deep); font-weight: 400; }
+  .tagline { color: var(--muted); font-size: 0.85rem; margin-bottom: 28px; text-align: center; }
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 280px)); gap: 16px; width: 100%; justify-content: center; }
+  .choice { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 22px 20px; text-align: left; cursor: pointer;
+            box-shadow: 0 1px 3px rgba(46,26,71,0.06); transition: border-color .15s, transform .15s; color: var(--text); font: inherit; }
+  .choice:hover { border-color: var(--champ); transform: translateY(-1px); }
+  .choice h2 { font-size: 1.05rem; margin-bottom: 6px; }
+  .choice p { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+  .choice .tag { display: inline-block; margin-top: 12px; font-size: 0.68rem; letter-spacing: 1px; text-transform: uppercase;
+                 color: var(--champ-deep); background: var(--champ-soft); padding: 3px 9px; border-radius: 10px; font-weight: 700; }
+
+  .pinbox { display: none; width: 100%; max-width: 320px; text-align: center; }
+  .pinbox h2 { font-size: 1.05rem; margin-bottom: 4px; }
+  .pinbox .for { color: var(--muted); font-size: 0.82rem; margin-bottom: 20px; }
+  .dots { display: flex; justify-content: center; gap: 14px; margin-bottom: 10px; }
+  .dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--champ); display: block; transition: background .1s; }
+  .dots i.on { background: var(--text); border-color: var(--text); }
+  .dots.shake { animation: shake .35s; }
+  @keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .err { color: var(--red); font-size: 0.82rem; min-height: 1.2em; margin-bottom: 12px; }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .pad button { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 0; font-size: 1.35rem; font-weight: 600;
+                color: var(--text); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .pad button:hover { border-color: var(--champ); background: var(--surface2); }
+  .pad button.fn { font-size: 0.85rem; color: var(--muted); }
+  .back { margin-top: 18px; background: none; border: none; color: var(--champ-deep); font-size: 0.85rem; cursor: pointer; }
+  /* Hidden real input so desktop keyboards and phone number pads work */
+  #pinInput { position: absolute; opacity: 0; pointer-events: none; }
+
+  @media (max-width: 620px) { .choices { grid-template-columns: 1fr; max-width: 360px; } }
+</style>
+</head>
+<body>
+  <div class="brand">Jewel <span>Trading</span></div>
+  <div class="tagline" id="tagline">Select the section you want to open</div>
+
+  <div class="choices" id="choices">
+    <button class="choice" data-section="trade">
+      <h2>Trading Dashboards</h2>
+      <p>Rates · Main · Detailed Arb — live bullion rates, bank rate and MCX / COMEX arbitrage.</p>
+      <span class="tag" id="tag-trade">PIN required</span>
+    </button>
+    <button class="choice" data-section="silver">
+      <h2>Jewel Silver Articles</h2>
+      <p>Silver spot rate, minimum selling rates and the retail price calculator.</p>
+      <span class="tag" id="tag-silver">PIN required</span>
+    </button>
+  </div>
+
+  <div class="pinbox" id="pinbox">
+    <h2>Enter PIN</h2>
+    <div class="for" id="pinFor"></div>
+    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+    <div class="err" id="err"></div>
+    <div class="pad" id="pad"></div>
+    <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4">
+    <button class="back" id="back">← Choose a different section</button>
+  </div>
+
+<script>
+const SECTIONS = {
+  trade:  { name: 'Trading Dashboards', home: '/rates',  paths: ['/rates', '/main', '/arb'] },
+  silver: { name: 'Jewel Silver Articles', home: '/silver', paths: ['/silver'] },
+};
+const $ = id => document.getElementById(id);
+const next = new URLSearchParams(location.search).get('next') || '';
+let section = null, pin = '', busy = false, roles = [];
+
+// If redirected from a protected page, go straight to the right PIN pad
+const nextSection = Object.keys(SECTIONS).find(k => SECTIONS[k].paths.some(p => next === p || next.startsWith(p + '?') || next.startsWith(p + '#')));
+
+function target(sec) {
+  return (next && nextSection === sec) ? next : SECTIONS[sec].home;
+}
+function openPin(sec) {
+  if (roles.includes(sec)) { location.href = target(sec); return; }
+  section = sec; pin = '';
+  $('choices').style.display = 'none';
+  $('tagline').style.display = 'none';
+  $('pinbox').style.display = 'block';
+  $('pinFor').textContent = SECTIONS[sec].name;
+  $('err').textContent = '';
+  drawDots();
+  $('pinInput').focus();
+}
+function closePin() {
+  section = null; pin = '';
+  $('pinbox').style.display = 'none';
+  $('choices').style.display = '';
+  $('tagline').style.display = '';
+}
+function drawDots() {
+  [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i < pin.length));
+  $('pinInput').value = pin;
+}
+function press(k) {
+  if (busy) return;
+  if (k === 'del') pin = pin.slice(0, -1);
+  else if (k === 'clr') pin = '';
+  else if (pin.length < 4) pin += k;
+  $('err').textContent = '';
+  drawDots();
+  if (pin.length === 4) submit();
+}
+async function submit() {
+  busy = true;
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ section, pin }), credentials: 'same-origin' });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) { location.href = target(section); return; }
+    $('err').textContent = j.error || 'Incorrect PIN';
+  } catch (_) {
+    $('err').textContent = 'Network error — try again';
+  }
+  $('dots').classList.remove('shake'); void $('dots').offsetWidth; $('dots').classList.add('shake');
+  pin = ''; drawDots(); busy = false;
+}
+
+$('pad').innerHTML = ['1','2','3','4','5','6','7','8','9','clr','0','del']
+  .map(k => `<button type="button" data-k="${k}" class="${k.length > 1 ? 'fn' : ''}">${k === 'del' ? '⌫' : k === 'clr' ? 'Clear' : k}</button>`).join('');
+$('pad').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { press(b.dataset.k); $('pinInput').focus(); } });
+$('choices').addEventListener('click', e => { const b = e.target.closest('.choice'); if (b) openPin(b.dataset.section); });
+$('back').addEventListener('click', closePin);
+$('pinInput').addEventListener('input', e => {
+  const v = e.target.value.replace(/\D/g, '').slice(0, 4);
+  if (v === pin) return;
+  pin = v; $('err').textContent = ''; drawDots();
+  if (pin.length === 4 && !busy) submit();
+});
+document.addEventListener('keydown', e => {
+  if (!section || document.activeElement === $('pinInput')) return;
+  if (/^\d$/.test(e.key)) press(e.key);
+  else if (e.key === 'Backspace') press('del');
+  else if (e.key === 'Escape') closePin();
+});
+
+// Mark sections this browser is already unlocked for
+fetch('/api/session', { credentials: 'same-origin' }).then(r => r.json()).then(j => {
+  roles = j.roles || [];
+  roles.forEach(r => { const t = $('tag-' + r); if (t) t.textContent = 'Unlocked · open'; });
+  if (nextSection && !roles.includes(nextSection)) openPin(nextSection);
+  else if (nextSection && roles.includes(nextSection)) location.href = next;
+}).catch(() => { if (nextSection) openPin(nextSection); });
+</script>
+</body>
+</html>
