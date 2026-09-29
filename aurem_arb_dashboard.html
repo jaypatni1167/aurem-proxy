@@ -199,6 +199,12 @@
     animation: livePulse 1s infinite;
   }
   @keyframes livePulse { 0%,100% {opacity:1} 50% {opacity:0.3} }
+  .sa-table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .sa-table th, .sa-table td { padding:9px 10px; border-bottom:1px solid var(--border); text-align:right; font-size:0.8rem; white-space:nowrap; }
+  .sa-table th { font-size:0.62rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); background:var(--surface2); text-align:center; }
+  .sa-table td:first-child { text-align:left; white-space:normal; min-width:180px; }
+  .sa-table input { width:78px; background:var(--bg); border:1px solid var(--gold); border-radius:5px; padding:5px 7px; color:var(--gold); font-size:0.82rem; text-align:right; font-variant-numeric:tabular-nums; }
+  .sa-table td.rate { color:var(--text); font-weight:700; }
 </style>
 </head>
 <body>
@@ -435,6 +441,32 @@
       Changes apply instantly to the <a href="/silver" style="color:var(--gold)">Jewel Silver Articles</a> page in this browser.
     </p>
   </div>
+
+  <div class="section">
+    <div class="section-title">
+      <span class="accent-silver">■</span> Minimum Selling Price — Min Profit per Gram (AED)
+      <span class="tag">Edit the gold-bordered cells · rates update live</span>
+    </div>
+    <div style="overflow-x:auto">
+    <table id="sa-margin-table" class="sa-table">
+      <thead>
+        <tr>
+          <th rowspan="2">Category</th>
+          <th rowspan="2">Spot $</th><th rowspan="2">Premium $</th><th rowspan="2">Sale $</th><th rowspan="2">Per g AED</th>
+          <th colspan="2">Wholesale (B2B)</th><th colspan="2">Retail Bulk Qty</th><th colspan="2">Retail</th>
+        </tr>
+        <tr>
+          <th>Min Profit</th><th>Min Rate</th><th>Min Profit</th><th>Min Rate</th><th>Min Profit</th><th>Min Rate</th>
+        </tr>
+      </thead>
+      <tbody id="sa-margin-tbody"></tbody>
+    </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 20px 16px;flex-wrap:wrap">
+      <span style="font-size:0.72rem;color:var(--muted)">Min Rate = Per g AED + Min Profit (before VAT). Values saved in this browser.</span>
+      <button type="button" id="sa-reset" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:0.72rem;cursor:pointer">Reset to spreadsheet values</button>
+    </div>
+  </div>
 </div>
 
 <div class="footer">
@@ -461,7 +493,7 @@ function switchTab(metal) {
   const isArticles = metal === 'silverArticles';
   document.querySelector('.main:not(#silver-articles-panel)').style.display = isArticles ? 'none' : '';
   document.getElementById('silver-articles-panel').style.display = isArticles ? '' : 'none';
-  if (isArticles) return;
+  if (isArticles) { saUpdateValues(); return; }
   S.activeMetal = metal;
   render();
 }
@@ -482,6 +514,76 @@ function switchTab(metal) {
     });
   });
 })();
+
+// ── Silver Articles — editable Min Profit table (shared with /silver via localStorage) ──
+const SA_MARGIN_KEY = 'aurem-silver-margins';
+const SA_CATEGORIES = [
+  { id: 'articles', name: 'Articles',                                    margins: { b2b: 3.25, bulk: 3.5,  retail: 5 } },
+  { id: 'oxodise',  name: 'Oxodise Papercasting Idols & Emerald Idols',  margins: { b2b: 9,    bulk: 10,   retail: 12.5 } },
+  { id: 'light',    name: 'Articles Light Weight / Fancy Items (< 10g)', margins: { b2b: 4,    bulk: 5,    retail: 10 } },
+  { id: 'plain',    name: 'Plain Coins',                                 margins: { b2b: 3,    bulk: 3.5,  retail: 4.5 } },
+  { id: 'color',    name: 'Color Coins',                                 margins: { b2b: 3.5,  bulk: 3.75, retail: 5 } },
+];
+function saLoadMargins() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SA_MARGIN_KEY) || '{}'); } catch (_) {}
+  const out = {};
+  SA_CATEGORIES.forEach(c => { out[c.id] = { ...c.margins, ...(saved[c.id] || {}) }; });
+  return out;
+}
+let saMargins = saLoadMargins();
+function saCfg() {
+  const DEF = { add: 0.20, prem: 3, fx: 3.674, vat: 5, manual: '' };
+  try { return { ...DEF, ...JSON.parse(localStorage.getItem('aurem-silver-pricing') || '{}') }; } catch (_) { return DEF; }
+}
+function saBuildTable() {
+  const tb = document.getElementById('sa-margin-tbody');
+  if (!tb) return;
+  const inp = (cat, k) => `<input type="number" step="0.05" min="0" data-cat="${cat}" data-k="${k}" value="${saMargins[cat][k]}">`;
+  tb.innerHTML = SA_CATEGORIES.map(c => `<tr>
+      <td>${c.name}</td>
+      <td id="sa-spot-${c.id}">—</td><td id="sa-prem-${c.id}">—</td><td id="sa-sale-${c.id}">—</td><td id="sa-perg-${c.id}">—</td>
+      <td>${inp(c.id,'b2b')}</td><td class="rate" id="sa-r-${c.id}-b2b">—</td>
+      <td>${inp(c.id,'bulk')}</td><td class="rate" id="sa-r-${c.id}-bulk">—</td>
+      <td>${inp(c.id,'retail')}</td><td class="rate" id="sa-r-${c.id}-retail">—</td>
+    </tr>`).join('');
+}
+function saUpdateValues() {
+  const cfg = saCfg();
+  const m = parseFloat(cfg.manual);
+  const comex = isFinite(m) && m > 0 ? m : (S.tvspot?.SI_LIVE?.close ?? S.tvspot?.XAGUSD?.ask ?? null);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  SA_CATEGORIES.forEach(c => {
+    if (comex == null) return;
+    const spot = comex + Number(cfg.add), sale = spot + Number(cfg.prem);
+    const perg = sale * Number(cfg.fx) / 31.1035;
+    set(`sa-spot-${c.id}`, '$' + spot.toFixed(3));
+    set(`sa-prem-${c.id}`, '$' + Number(cfg.prem).toFixed(2));
+    set(`sa-sale-${c.id}`, '$' + sale.toFixed(3));
+    set(`sa-perg-${c.id}`, perg.toFixed(3));
+    ['b2b','bulk','retail'].forEach(k => set(`sa-r-${c.id}-${k}`, (perg + Number(saMargins[c.id][k])).toFixed(3)));
+  });
+}
+saBuildTable();
+document.getElementById('sa-margin-tbody')?.addEventListener('input', e => {
+  const el = e.target; if (!el.dataset || !el.dataset.cat) return;
+  const v = parseFloat(el.value);
+  if (!isFinite(v)) return;
+  saMargins[el.dataset.cat][el.dataset.k] = v;
+  try { localStorage.setItem(SA_MARGIN_KEY, JSON.stringify(saMargins)); } catch (_) {}
+  saUpdateValues();
+});
+document.getElementById('sa-reset')?.addEventListener('click', () => {
+  if (!confirm('Reset all Min Profit values to the spreadsheet defaults?')) return;
+  try { localStorage.removeItem(SA_MARGIN_KEY); } catch (_) {}
+  saMargins = saLoadMargins(); saBuildTable(); saUpdateValues();
+});
+// Premium/add-on/FX edits above also change the table
+['sa-add','sa-prem','sa-fx','sa-manual'].forEach(id => document.getElementById(id)?.addEventListener('input', saUpdateValues));
+setInterval(() => {
+  const panel = document.getElementById('silver-articles-panel');
+  if (panel && panel.style.display !== 'none') saUpdateValues();
+}, 1000);
 
 function onSpotArbDetailChange() {
   const sel = document.getElementById('spot-arb-detail-sel');

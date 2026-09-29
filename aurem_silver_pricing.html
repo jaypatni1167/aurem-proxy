@@ -222,8 +222,20 @@ const DEFAULTS = { add: 0.20, prem: 3, fx: 3.674, vat: 5, manual: '' };
 
 const S = { comex: null, comexSrc: null, comexTs: null, cat: 'articles', cust: 'retail' };
 let cfg = { ...DEFAULTS };
+// Min profit per gram — edited in Detailed Arb → Silver Articles table
+const MARGIN_KEY = 'aurem-silver-margins';
+const DEFAULT_MARGINS = Object.fromEntries(CATEGORIES.map(c => [c.id, { ...c.margins }]));
 function loadCfg() {
   try { cfg = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch (_) { cfg = { ...DEFAULTS }; }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(MARGIN_KEY) || '{}'); } catch (_) {}
+  CATEGORIES.forEach(c => {
+    const m = saved[c.id] || {};
+    ['b2b', 'bulk', 'retail'].forEach(k => {
+      const v = parseFloat(m[k]);
+      c.margins[k] = isFinite(v) ? v : DEFAULT_MARGINS[c.id][k];
+    });
+  });
 }
 loadCfg();
 try {
@@ -233,7 +245,7 @@ try {
 } catch (_) {}
 const saveLast = () => { try { localStorage.setItem('aurem-silver-last', JSON.stringify({ cat: S.cat, cust: S.cust })); } catch (_) {} };
 // Pick up setting changes made on the Detailed Arb page
-window.addEventListener('storage', e => { if (e.key === CFG_KEY) { loadCfg(); render(); } });
+window.addEventListener('storage', e => { if (e.key === CFG_KEY || e.key === MARGIN_KEY) { loadCfg(); render(); } });
 window.addEventListener('focus', () => { loadCfg(); render(); });
 
 const $ = id => document.getElementById(id);
