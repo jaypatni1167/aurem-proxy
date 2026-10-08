@@ -978,14 +978,12 @@ function renderSpotArbDetail(comexRows, threshold) {
   document.getElementById('spot-arb-title').textContent = `${label} Spot vs COMEX Futures — Cash & Carry Basis`;
   document.getElementById('spot-arb-tag').textContent   = `Top 3 by volume · locked`;
 
-  // Patch the front-month contract with investing.com's continuous live price (sub-second ticks)
-  if (comexRows.length && S.futLive) {
-    const front = comexRows[0];
+  // Apply the live feed to the contract the server matched it to (not simply the nearest month)
+  if (S.futLive && S.liveMap) {
+    const sym  = isGold ? S.liveMap.gold : S.liveMap.silver;
     const live = isGold ? S.futLive.gold : S.futLive.silver;
-    if (live != null && front && front.close != null && Math.abs(front.close - live) < live * 0.05) {
-      front.close = live;
-      front.live = true;
-    }
+    const row  = comexRows.find(r => r.symbol === sym);
+    if (row && live != null) { row.close = live; row.live = true; }
   }
 
   // Lock top-3-by-volume for this metal (same rule used on the main page).
@@ -1144,6 +1142,7 @@ function connectWS() {
         S.futLive = S.futLive || {};
         if (msg.prices.GC_LIVE?.close != null) S.futLive.gold   = msg.prices.GC_LIVE.close;
         if (msg.prices.SI_LIVE?.close != null) S.futLive.silver = msg.prices.SI_LIVE.close;
+        if (msg.liveMap) S.liveMap = msg.liveMap;
         document.getElementById('mt5-update').textContent =
           new Date(msg.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
         flashOnChange('cfg-spot', prevXau, S.xauAsk);

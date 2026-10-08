@@ -517,6 +517,18 @@ function deriveSpreadRange(longLeg, shortLeg) {
   const lo = longLeg.lo - shortLeg.hi;
   return { session: currentSessionKey(), hi, lo };
 }
+// Server-recorded day H/L for a spread (sampled every second from fresh, same-moment
+// prices). opts.negate → reverse direction; opts.shift → constant offset (premium/duty).
+// The current on-screen value is always folded in, so H ≥ current ≥ L.
+function spreadHL(key, current, opts = {}) {
+  const rec = legRange(key);
+  if (!rec) return current != null ? { hi: current, lo: current, partial: true } : null;
+  let hi = rec.hi, lo = rec.lo;
+  if (opts.negate) { const h = hi; hi = -lo; lo = -h; }
+  if (opts.shift) { hi += opts.shift; lo += opts.shift; }
+  if (current != null && isFinite(current)) { hi = Math.max(hi, current); lo = Math.min(lo, current); }
+  return { hi, lo };
+}
 function legRange(key) {
   const rec = S.serverRange && S.serverRange[key];
   if (!rec) return null;
@@ -660,22 +672,14 @@ function render() {
   const wtiF       = filterBy('oil',    'NYMEX:');
   const brentF     = filterBy('oil',    'ICEEUR:');
 
-  // Overlay investing.com's continuous-front-month live tick onto the nearest COMEX contract
-  // so users see sub-second price movement even when TradingView WS is blocked.
-  const patchFrontMonth = (rows, livePrice, label) => {
-    if (livePrice == null || !rows.length) return;
-    const front = rows[0];
-    if (!front || front.close == null) return;
-    // Accept live patch when within ±5% of the last scanner close (avoids wrong-contract mismatch)
-    if (Math.abs(front.close - livePrice) < livePrice * 0.05) {
-      front.close = livePrice;
-      front.live = true;
-    } else if (window.__debugLive) {
-      console.log(`[live-patch] ${label} rejected: front=${front.close} live=${livePrice}`);
-    }
-  };
-  patchFrontMonth(goldComex, (S.futLive || {}).gold,   'GC');
-  patchFrontMonth(silvComex, (S.futLive || {}).silver, 'SI');
+  // Apply each live feed (investing.com) to the contract the SERVER matched it to
+  // (e.g. GC_LIVE → Dec gold, which is not always the nearest month).
+  const LIVE_KEYS = { gold: 'GC_LIVE', silver: 'SI_LIVE', wti: 'WTI', brent: 'BRENT' };
+  Object.entries(S.liveMap || {}).forEach(([name, sym]) => {
+    const live = S.tvspot?.[LIVE_KEYS[name]]?.close;
+    const row = S.contractCache[sym];
+    if (row && live != null) { row.close = live; row.live = true; }
+  });
 
   // ── Render gold arb selector + comparison ─────────────
   renderSelectorArb('gold', goldMcx, goldComex, {
@@ -740,8 +744,8 @@ function renderSpotArb(comexRows, threshold) {
   const annBasisRev  = annualize(basisRev, c.close, days);
 
   // Direct spread H/L: server records the actual spread value on every tick.
-  const spotRangeN = legRange(`basis:${c.symbol}:normal`)  || updateRange(`spot-normal:${c.symbol}`,  basis);
-  const spotRangeR = legRange(`basis:${c.symbol}:reverse`) || updateRange(`spot-reverse:${c.symbol}`, basisRev);
+  const spotRangeN = spreadHL(`v2:basis:${c.symbol}`, basis);
+  const spotRangeR = spreadHL(`v2:basis:${c.symbol}`, basisRev, { negate: true });
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -837,7 +841,14 @@ function renderSelectorArb(metal, mcxRows, comexRows, opts) {
   const spread = m.close - impliedINR;
   const days = daysTo(m.expiration);
   const annSpread = annualize(spread, impliedINR, days);
-  const rangeRec = updateRange(`${metal}:${m.symbol}:${c.symbol}`, spread);
+  // Server records MCX − COMEX×FX÷31.1035×unit; subtract this page's premium & duty
+  // (same Rates-page inputs used for Implied ₹) to get the spread shown here.
+  const rin = readRatesInputs(), fxNow = liveFxForBank();
+  const unitK = gramMultiplier === 10 ? 10 : 1000;
+  const premK = metal === 'gold' ? rin.goldPrem : rin.silverPrem;
+  const tarK  = metal === 'gold' ? rin.goldTariff : rin.silverTariff;
+  const shiftK = fxNow != null ? -(premK * fxNow / 31.1035 * unitK + tarK * rin.cbicFx * rin.dutyPct / 100) : 0;
+  const rangeRec = spreadHL(`v2:mcx:${m.symbol}:${c.symbol}`, spread, { shift: shiftK });
   const isOpp = annSpread != null && Math.abs(annSpread) >= threshold;
   const chip = isOpp
     ? `<span class="opp-chip yes">${annSpread > 0 ? '↑ MCX PREM' : '↓ MCX DISC'}</span>`
@@ -896,8 +907,8 @@ function renderOilArb(tbodyId, wtiRows, brentRows, threshold) {
   const spreadPctReverse = (spreadReverse / brentPrice) * 100;
   const annReverse       = annualize(spreadReverse, brentPrice, days);
   // Direct spread H/L — spread value tracked on every tick.
-  const oilRangeN = legRange(`oil:${m.symbol}:${c.symbol}:normal`)  || updateRange(`oil-normal:${m.symbol}:${c.symbol}`,  spreadNormal);
-  const oilRangeR = legRange(`oil:${m.symbol}:${c.symbol}:reverse`) || updateRange(`oil-reverse:${m.symbol}:${c.symbol}`, spreadReverse);
+  const oilRangeN = spreadHL(`v2:oil:${m.symbol}:${c.symbol}`, spreadNormal);
+  const oilRangeR = spreadHL(`v2:oil:${m.symbol}:${c.symbol}`, spreadReverse, { negate: true });
 
   const chip = (ann) => {
     if (ann == null) return `<span class="opp-chip no">—</span>`;
@@ -972,6 +983,7 @@ function connectWS() {
         S.futLive = S.futLive || {};
         if (msg.prices.GC_LIVE && msg.prices.GC_LIVE.close != null) S.futLive.gold   = msg.prices.GC_LIVE.close;
         if (msg.prices.SI_LIVE && msg.prices.SI_LIVE.close != null) S.futLive.silver = msg.prices.SI_LIVE.close;
+        if (msg.liveMap) S.liveMap = msg.liveMap;
         // Server-authoritative session H/L for directly-computable spreads
         if (msg.spreadRange) S.serverRange = msg.spreadRange;
         document.getElementById('spot-update').textContent =

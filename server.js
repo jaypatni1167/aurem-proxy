@@ -229,6 +229,8 @@ function broadcast(data) {
         data = { ...data, spreadRange: getSpreadRangeSnapshot() };
       }
     }
+    // Every live-spot message carries the live-feed → contract mapping
+    if (data && data.source === 'tvspot' && typeof liveMap !== 'undefined') data = { ...data, liveMap };
     const msg = JSON.stringify(data);
     for (const client of clients) {
       if (client.readyState === 1) client.send(msg);
@@ -584,7 +586,7 @@ function updateSpread(key, value) {
   const sess = currentSessionKey();
   let removed = 0;
   for (const k of Object.keys(spreadRange)) {
-    if (spreadRange[k].session !== sess) { delete spreadRange[k]; removed++; }
+    if (spreadRange[k].session !== sess || !k.startsWith('v2:')) { delete spreadRange[k]; removed++; }
   }
   if (removed) console.log(`[H/L] Purged ${removed} stale-session records on startup`);
 })();
@@ -596,7 +598,7 @@ app.post('/api/reset-hl', (req, res) => {
   broadcast({ type: 'rates', source: 'system', timestamp: Date.now(), prices: {} });
   res.json({ ok: true });
 });
-app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), spreadRange }));
+app.get('/api/hl', (req, res) => res.json({ session: currentSessionKey(), liveMap, spreadRange }));
 app.get('/api/arihant', (req, res) => res.json(latestRates.arihant || { error: 'no data yet' }));
 app.get('/api/aurem',   (req, res) => res.json(latestRates.aurem   || { error: 'no data yet' }));
 
@@ -661,35 +663,12 @@ function connectInvestingWs() {
           console.log(`[Investing] ✓ ${key} streaming: ${last}`);
         }
       }
-      // Update session H/L for directly-computable spreads on every tick
-      const xau = spotState.XAUUSD?.close, xag = spotState.XAGUSD?.close;
-      const wti = spotState.WTI?.close, brent = spotState.BRENT?.close;
-      const gcLive = spotState.GC_LIVE?.close, siLive = spotState.SI_LIVE?.close;
-      if (xau != null)    updateSpread('spot:XAUUSD', xau);
-      if (xag != null)    updateSpread('spot:XAGUSD', xag);
-      if (gcLive != null) updateSpread('fut:COMEX:GC_FRONT', gcLive);
-      if (siLive != null) updateSpread('fut:COMEX:SI_FRONT', siLive);
-      if (brent != null)  updateSpread('spot:BRENT', brent);
-      if (wti != null)    updateSpread('spot:WTI', wti);
-      if (brent != null && wti != null) {
-        updateSpread('oil:brent-wti:normal',  brent - wti);
-        updateSpread('oil:brent-wti:reverse', wti - brent);
-      }
-      if (gcLive != null && xau != null) {
-        updateSpread('gold:basis:normal',  gcLive - xau);
-        updateSpread('gold:basis:reverse', xau - gcLive);
-      }
-      if (siLive != null && xag != null) {
-        updateSpread('silver:basis:normal',  siLive - xag);
-        updateSpread('silver:basis:reverse', xag - siLive);
-      }
-
       // Broadcast on every message (real-time)
       const prices = { ...spotState };
       const augUsd = latestRates.augmont?.prices?.USDINR;
       if (augUsd) prices.USDINR = { symbol: 'USDINR', close: augUsd.buy, bid: augUsd.buy, ask: augUsd.sell, change: 0 };
-      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices };
-      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices });
+      latestRates.tvspot = { source: 'tvspot', timestamp: Date.now(), prices, liveMap };
+      broadcast({ type: 'rates', source: 'tvspot', timestamp: Date.now(), prices, liveMap });
     } catch (e) {}
   });
 
@@ -893,7 +872,8 @@ function tvScan(matchTerm, exchanges = ['MCX', 'COMEX'], field = 'name,descripti
       { left: 'exchange', operation: 'in_range', right: exchanges }
     ],
     columns: ['name', 'description', 'close', 'change', 'expiration', 'bid', 'ask', 'volume', 'open_interest'],
-    range: [0, 80]
+    sort: { sortBy: 'expiration', sortOrder: 'asc' },
+    range: [0, 300]
   });
   return new Promise((resolve, reject) => {
     const req = https.request({
@@ -977,31 +957,7 @@ async function fetchTradingView() {
       .map(p => p.symbol);
     if (nearTerm.length) tvSubscribeMore(nearTerm);
 
-    // Track daily H/L per futures symbol, per-symbol basis vs spot, AND every WTI×Brent pair.
-    const spotXau = spotState.XAUUSD?.close, spotXag = spotState.XAGUSD?.close;
-    const oilRows = Object.values(prices).filter(p => p.metal === 'oil' && p.close != null);
-    const wtiRows   = oilRows.filter(p => p.symbol.startsWith('NYMEX:'));
-    const brentRows = oilRows.filter(p => p.symbol.startsWith('ICEEUR:'));
-    Object.values(prices).forEach(p => {
-      if (p.close == null) return;
-      updateSpread(`fut:${p.symbol}`, p.close);
-      if (p.metal === 'gold' && p.symbol.startsWith('COMEX:') && spotXau != null) {
-        updateSpread(`basis:${p.symbol}:normal`,  p.close - spotXau);
-        updateSpread(`basis:${p.symbol}:reverse`, spotXau - p.close);
-      }
-      if (p.metal === 'silver' && p.symbol.startsWith('COMEX:') && spotXag != null) {
-        updateSpread(`basis:${p.symbol}:normal`,  p.close - spotXag);
-        updateSpread(`basis:${p.symbol}:reverse`, spotXag - p.close);
-      }
-    });
-    // Only track the nearest 4 WTI × 4 Brent (16 pairs) to avoid key explosion
-    const sortByExp = (a, b) => (a.expiration || 0).toString().localeCompare((b.expiration || 0).toString());
-    const wtiNear   = wtiRows.slice().sort(sortByExp).slice(0, 4);
-    const brentNear = brentRows.slice().sort(sortByExp).slice(0, 4);
-    wtiNear.forEach(w => brentNear.forEach(b => {
-      updateSpread(`oil:${w.symbol}:${b.symbol}:normal`,  b.close - w.close);
-      updateSpread(`oil:${w.symbol}:${b.symbol}:reverse`, w.close - b.close);
-    }));
+    updateLiveMap(prices);
 
     const rates = { source: 'tradingview', timestamp: Date.now(), prices };
     latestRates.tradingview = rates;
@@ -1019,7 +975,107 @@ async function fetchTradingView() {
   }
 }
 fetchTradingView();
-setInterval(fetchTradingView, 10000);  // 10s to stay under TV rate limit
+setInterval(fetchTradingView, 10000);
+
+// ── Live-feed → contract mapping ────────────────────────────────────────
+// investing.com streams ONE continuous contract per market (the most active
+// month, e.g. Dec gold), not necessarily the nearest. Map each live feed to
+// the scanner contract whose price matches it, so the live tick is applied to
+// the right month everywhere (display AND H/L).
+const LIVE_FEEDS = {
+  // `re` = the standard contract code only (e.g. SIZ2026, not SICZ2026)
+  gold:   { key: 'GC_LIVE', metal: 'gold',   prefix: 'COMEX:',  re: /^COMEX:GC[FGHJKMNQUVXZ]\d{4}$/ },
+  silver: { key: 'SI_LIVE', metal: 'silver', prefix: 'COMEX:',  re: /^COMEX:SI[FGHJKMNQUVXZ]\d{4}$/ },
+  wti:    { key: 'WTI',     metal: 'oil',    prefix: 'NYMEX:',  re: /^NYMEX:CL[FGHJKMNQUVXZ]\d{4}$/ },
+  brent:  { key: 'BRENT',   metal: 'oil',    prefix: 'ICEEUR:', re: /^ICEEUR:BRN[FGHJKMNQUVXZ]\d{4}$/ },
+};
+let liveMap = {};       // { gold: 'COMEX:GCZ2026', silver: ..., wti: ..., brent: ... }
+const expMs = (e) => { const t = String(e || ''); return t.length === 8 ? Date.UTC(+t.slice(0,4), +t.slice(4,6)-1, +t.slice(6,8)) : null; };
+function updateLiveMap(prices) {
+  const now = Date.now();
+  const next = {};
+  for (const [name, f] of Object.entries(LIVE_FEEDS)) {
+    const live = spotState[f.key]?.close;
+    if (live == null) continue;
+    const tol = live * 0.008;   // scanner snapshot vs live tick can differ slightly
+    // Keep the current match while it still fits (prevents flip-flopping between months)
+    const cur = prices[liveMap[name]];
+    if (cur && cur.close != null && Math.abs(cur.close - live) < tol) { next[name] = cur.symbol; continue; }
+    // Otherwise: the most-traded standard contract whose price fits the live feed
+    let best = null;
+    for (const p of Object.values(prices)) {
+      if (p.metal !== f.metal || !f.re.test(p.symbol) || p.close == null || !(p.volume > 0)) continue;
+      const e = expMs(p.expiration); if (!e || e < now || e > now + 200 * 86400e3) continue;
+      if (Math.abs(p.close - live) >= tol) continue;
+      if (!best || p.volume > best.volume) best = p;
+    }
+    if (best) next[name] = best.symbol;
+  }
+  liveMap = next;
+}
+
+// ── Day High/Low sampler ────────────────────────────────────────────────
+// Once per second, compute every spread from prices that are FRESH and taken
+// at the same moment, then update the day's high/low. Contracts that are not
+// trading (volume 0) or whose data is stale are skipped instead of producing
+// fake ranges.
+const SAMPLE_MS = 1000;
+function liveFeedFor(sym) {
+  for (const [name, s] of Object.entries(liveMap)) {
+    if (s === sym) {
+      const st = spotState[LIVE_FEEDS[name].key];
+      if (st && st.close != null && Date.now() - (st._wsTs || 0) < 15000) return st.close;
+    }
+  }
+  return null;
+}
+function legPrice(p) {
+  const live = liveFeedFor(p.symbol);
+  if (live != null) return live;
+  const tv = latestRates.tradingview;
+  if (!tv || Date.now() - tv.timestamp > 30000) return null;      // scanner stale
+  if (!(p.volume > 0) || p.close == null) return null;             // not trading today
+  return p.close;
+}
+function freshSpot(key) {
+  const st = spotState[key];
+  return st && st.close != null && Date.now() - (st._wsTs || 0) < 15000 ? st.close : null;
+}
+function freshFx() {
+  const a = latestRates.arihant;
+  if (a && Date.now() - a.timestamp < 60000 && a.prices?.USD_INR?.buy > 0) return a.prices.USD_INR.buy;
+  const g = latestRates.augmont;
+  if (g && g.prices?.USDINR?.buy > 0) return g.prices.USDINR.buy;
+  return null;
+}
+setInterval(() => {
+  const tv = latestRates.tradingview;
+  if (!tv) return;
+  const now = Date.now(), horizon = now + 400 * 86400e3;
+  const rows = Object.values(tv.prices).filter(p => { const e = expMs(p.expiration); return e && e >= now && e <= horizon; });
+  const legs = new Map();
+  rows.forEach(p => { const v = legPrice(p); if (v != null) legs.set(p.symbol, v); });
+  const pick = (metal, prefix) => rows.filter(p => p.metal === metal && p.symbol.startsWith(prefix) && legs.has(p.symbol));
+
+  const xau = freshSpot('XAUUSD'), xag = freshSpot('XAGUSD'), fx = freshFx();
+  // Spot vs COMEX basis:  Futures − Spot ($/oz)
+  if (xau != null) pick('gold',   'COMEX:').forEach(c => updateSpread(`v2:basis:${c.symbol}`, legs.get(c.symbol) - xau));
+  if (xag != null) pick('silver', 'COMEX:').forEach(c => updateSpread(`v2:basis:${c.symbol}`, legs.get(c.symbol) - xag));
+  // MCX vs COMEX (raw, before premium & duty):  MCX − COMEX × FX ÷ 31.1035 × unit
+  // The page subtracts premium × FX and the customs duty (both constant for the day).
+  if (fx != null) {
+    [['gold', 10], ['silver', 1000]].forEach(([metal, unit]) => {
+      const mcx = pick(metal, 'MCX:'), cmx = pick(metal, 'COMEX:');
+      mcx.forEach(m => cmx.forEach(c => {
+        updateSpread(`v2:mcx:${m.symbol}:${c.symbol}`, legs.get(m.symbol) - legs.get(c.symbol) * fx / 31.1035 * unit);
+      }));
+    });
+  }
+  // Brent − WTI ($/bbl)
+  const wti = pick('oil', 'NYMEX:'), brent = pick('oil', 'ICEEUR:');
+  wti.forEach(w => brent.forEach(b => updateSpread(`v2:oil:${w.symbol}:${b.symbol}`, legs.get(b.symbol) - legs.get(w.symbol))));
+}, SAMPLE_MS);
+  // 10s to stay under TV rate limit
 
 // Health check endpoint
 app.get('/health', (req, res) => res.json({ status: 'ok', augmont: !!latestRates.augmont, arihant: !!latestRates.arihant }));
